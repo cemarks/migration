@@ -26,8 +26,9 @@ library(simmer)
 library(readxl)
 migrant.datafile <- "F:/Desktop/Rscripts/migration/migrant_inputs.xlsx"
 areas.datafile <- "F:/Desktop/Rscripts/migration/ship_info.xlsx"
-migrant.datafile <- "/home/cemarks/Projects/migration/migrant_inputs.xlsx"
-areas.datafile <- "/home/cemarks/Projects/migration/ship_info.xlsx"
+processing.datafile <- "F:/Desktop/Rscripts/migration/processing_inputs.xlsx"
+# migrant.datafile <- "/home/cemarks/Projects/migration/migrant_inputs.xlsx"
+# areas.datafile <- "/home/cemarks/Projects/migration/ship_info.xlsx"
 #' # Models and Inputs 
 #' 
 #' This simulation consists of three layers:
@@ -36,7 +37,7 @@ areas.datafile <- "/home/cemarks/Projects/migration/ship_info.xlsx"
 #' 1. The migrant consolidation layer.
 #' 1. The migrant processing layer.
 #' 
-#' ## Migrant Sources
+#' ## Layer 1: Migrant Sources
 #' 
 #' This layer deals with the source(s) of migrants.  The model can include 
 #' multiple sources.  In this implementation, the sources are "Haiti" and "Cuba."
@@ -80,13 +81,16 @@ knitr::kable(
 
 #+ echo=FALSE
 check_table <- function(d,names.vector = migrant.sources$Source,error.d="",row1.vector = NULL){
-  if(!all(names(d)[2:ncol(d)] %in% names.vector)){
+  if(!all(names(d)[2:ncol(d)] %in% c(names.vector,"remarks"))){
     stop(sprintf("Invalid column in %s input data.",error.d))
   }
   if(!is.null(row1.vector)){
     if(!all(as.character(d[,1]) %in% as.character(row1.vector))){
       stop(sprintf("Invalid category in %s data inputs.",error.d))
     }
+  }
+  for(j in 1:ncol(d)){
+    d[which(is.na(d[,j])),j] <- 0
   }
   return(d)
 }
@@ -428,7 +432,11 @@ migrant_attributes <- function(mig.source){
   migrant.health <- prob_generator(health.probs,mig.source)$value
   migrant.nationality <- prob_generator(nationality.probs,mig.source)$value
   security.risk <- security_risk_prob_generator(family.status,mig.source)
-  migrant.protected <- prob_generator(protected.probs,mig.source)$value
+  if(security.risk == 2){
+    migrant.protected <- prob_generator(protected.probs,mig.source)$value
+  } else {
+    migrant.protected <- 2
+  }
   return(
     c(
       family.status = family.status,
@@ -463,8 +471,9 @@ source_trajectories <- function(area.trajectory.list){
   }
   output <- list()
   for(i in 1:length(mig.sources)){
+    mig.source <- mig.sources[i]
     p <- pickup.areas[,mig.source]
-    output[[i]] <- trajectory() %>%
+    output[[mig.source]] <- trajectory() %>%
       set_attribute(
         keys = c(
           "family.status",
@@ -474,11 +483,11 @@ source_trajectories <- function(area.trajectory.list){
           "protected"
         ),
         values = as.numeric(
-          migrant.attributes(
+          migrant_attributes(
             mig.source
           )
         )
-      )
+      ) %>%
       branch(
         option = function(){
           route = prob_generator_int(p)
@@ -492,7 +501,7 @@ source_trajectories <- function(area.trajectory.list){
 }
 
 #'
-#' ## Consolidation Layer
+#' ## Layer 2: Migrant Consolidation
 #' 
 #' This layer consists of consolidation areas, where migrants accumlate and
 #' are located and picked-up for transit to the processing layer.  Only a single
@@ -511,12 +520,13 @@ source_trajectories <- function(area.trajectory.list){
 #' 
 #' #### Consoliation area information.
 #' 
-#' An example table was provided at the end of the last section.  This input includes the
+#' The consolidation area information table was provided at the end of the last section.  This input includes the
 #' probabilities of migrants generated at each source following each consolidation area 
 #' trajectory.  It also includes timeout information, i.e., if a migrant is not picked up after
 #' a certain amount of time in a consolidation area, then the migrant "times out" and moves to
-#' another area as identified in the inputs.  Moving to area "0" indicates the migrant leaves 
-#' the system.
+#' another area as identified in the inputs.  Moving to area "depart" indicates the migrant leaves 
+#' the system. Finally, transit time from the consolidation area to the processing station
+#' is also included in this input table.
 #' 
 #' #### Boat types
 #' 
@@ -526,551 +536,982 @@ source_trajectories <- function(area.trajectory.list){
 #' 
 
 #+ echo=FALSE
-knitr::kable(
-  data.frame(
-    boat.type=c(
-      "<b>[Boat1 Name]</b>",
-      "<b>[Boat2 Name]</b>",
-      "<b>...</b>"
-    ),
-    sat.cap = c(
-      "<b>[capacity1]</b>",
-      "<b>[capacity2]</b>",
-      "<b>...</b>"
-    ),
-    sat.time = c(
-      "<b>[sat.time1]</b>",
-      "<b>[sat.time2]</b>",
-      "<b>...</b>"
-    ),
-    supersat.cap = c(
-      "<b>[supercapacity1]</b>",
-      "<b>[supercapacity2]</b>",
-      "<b>...</b>"
-    ),
-    supersat.time = c(
-      "<b>[supersat.time1]</b>",
-      "<b>[supersat.time2]</b>",
-      "<b>...</b>"
-    ),
-    berths.required = c(
-      "<b>[berths1]</b>",
-      "<b>[berths2]</b>",
-      "<b>...</b>"
-    ),
-    offload.time = c(
-      "<b>[offload.time1]</b>",
-      "<b>[offload.time2]</b>",
-      "<b>...</b>"
-    ),
-    reset.time = c(
-      "<b>[reset.time1]</b>",
-      "<b>[reset.time2]</b>",
-      "<b>...</b>"
+# protected.probs <- check_table(
+#   as.data.frame(
+#     read_excel(migrant.datafile,sheet = "protected")
+#   ),
+#   error.d = 'protected migrant rate',
+#   row1.vector = migrant.attributes$protected
+# )
+ship.attributes <- check_table(
+  as.data.frame(
+    read_excel(
+      areas.datafile,
+      sheet = "ship.attributes"
     )
   ),
+  names.vector <- c(
+    "sat.capacity",
+    "supersat.capacity",
+    "occupied.time",
+    "sat.time",
+    "supersat.time",
+    "offload.time",
+    "berth.occupation",
+    "recovery.time"
+  ),
+  error.d = "boat attributes"
+)
+knitr::kable(
+  ship.attributes,
+  row.names = FALSE,
   align = c(
     "l",
-    "c",
-    "c",
-    "c",
-    "c",
-    "c"
-  ),
-  row.names = FALSE
+    rep("c",ncol(ship.attributes)-1)
+  )
 )
 
-#' #### Transit times.
+#' #### Boat allocation.
 #' 
 #' For each area, the simulation requires the transit time from the consolidation area 
 #' to the processing station.  These inputs take have the structure in the table below.
 #' 
 
 #+ echo=FALSE
-knitr::kable(
-  data.frame(
-    Consolidation.Area=names(consolidation.areas),
-    Transit.time = rep("<b>[transit.time]</b>",length(consolidation.areas))
+ship.allocation <- check_table(
+  as.data.frame(
+    read_excel(
+      areas.datafile,
+      sheet = "ship.allocation"
+    )
   ),
+  names.vector <- as.character(ship.attributes[,1]),
+  error.d = "boat attributes",
+  row1.vector = as.character(pickup.areas[,1])
+)
+knitr::kable(
+  ship.allocation,
+  row.names = FALSE,
   align = c(
     "l",
-    "c"
+    rep("c",ncol(ship.allocation)-1)
   )
-)
-
-#' #### Boat allocations
-#' 
-#' The number of boats, by type, per consolidation area follows a simlar tabular structure.
-
-#+ echo=FALSE
-d <- data.frame(
-  Consolidation.Area = consolidation.areas,
-  boat.1 = rep("<b>[n]</b>",length(consolidation.areas)),
-  boat.2 = rep("<b>[n]</b>",length(consolidation.areas)),
-  boat.3 = rep("<b>[n]</b>",length(consolidation.areas))
-)
-knitr::kable(
-  d,
-  align=c(
-    "l",
-    "c",
-    "c"
-  ),
-  row.names = FALSE
 )
 
 #' #### Pier capacity
 #' 
 #' This input is a single number of berthing spaces available at the processing station.  Boat
-#' will occupy these spaces in order to offload migrants
-#' 
-
-pier.capacity <- 8 # Example pier capacity
-
-
+#' will occupy these spaces in order to offload migrants.  This value is included in the
+#' processing layer inputs.
+#'
 #' ### Trajectories
 #' 
 #' With the above information, it is possible to write the consolidation area trajectory generator
-#' functions.
+#' functions.  These trajectories include migrant trajectories and boat trajectories.
+#' 
+#' #### Consolidation Area Migrant Trajectories
 #' 
 
-ca.migrant.trajectories <- function(
-  
-)
 
+# helper function
+epsilon <- function(){
+  return(runif(1,0.05,0.2))
+}
 
-
-
-#' ## Migrant batching
-#' 
-#' Initial migrant batching must be done using one or more generators, and joining batches 
-#' into area trajectories.
-
-
-
-#' ## Boat-Migrant Trajectories
-#' 
-#' The boats in this model queue at their respective pick up areas,
-#' and change passenger pick-up
-#' capacities upon arrival and departure.  Each boat can only be assigned to one
-#' pick up area.  The boat departs the pick-up area when:
-#' 
-#' * It reaches max capacity, $m$.
-#' * $t_n$ time units after reaching 'saturation' capacity, $n$.
-#' * $t_1$ time units after picking up its first migrant.
-#' 
-#' These events are handled with variables in the global environment
-#' and with signals.
-#' 
-
-boat.max.capacity <- 8
-m <- 5 # boat full--immediate departure
-n <- 3 # boat saturated
-t.n <- 2 # time boat can remain saturated prior to departing
-t.1 <- 10 # time boat can remain occupied prior to departing
-boat.first.arrival <- 5 # time it takes for boat to initially reach pick-up location.
-journey.time <- 9 # time it takes to reach processing stations once boat departs (+ admin delay)
-boat.return.time <- 19 # time it takes boat to return to pick-up location after departing (+ admin delay)
-pickup.epsilon <- 0.01 # admin delay from when boat receives departure signal to when it departs.
-
-migrant.1 <- trajectory("Migrant 1") %>%
-  set_attribute(
-    keys = names(migrant.attributes),
-    values = migrant_attributes
-  ) %>%
-  seize("boat.area.1") %>%
-  set_global(
-    keys = "boat1.count",
-    values = 1,
-    mod = "+"
-  ) %>% 
-  branch(
-    option = function(){
-      boat1count <- get_global(env,"boat1.count")
-      if(boat1count == 1){
-        return(1)
-      } else if(boat1count==n){
-        return(2)
-      } else if(boat1count==m){
-        return(3)
-      } else {
-        return(0)
-      }
-    },
-    continue = TRUE,
-    list(
-      "1" = set_global(
-        trajectory(),
-        keys = "boat1.occupied",
-        values = function() return(now(env))
-      ) %>%
-        log_(
-          "Sending 1st depart signal (1st migrant boarded)"
-        ) %>%
-        send(
-          signals = "boat1.depart",
-          delay = t.1
-        ),
-      "2" = set_global(
-        trajectory(),
-        keys = "boat1.saturated",
-        values = function() return(now(env))
-      ) %>%
-        log_(
-          "Sending 2nd depart signal (boat saturated)"
-        ) %>% 
-        send(
-          signals = "boat1.depart",
-          delay = t.n
-        ),
-      "3" = set_global(
-        trajectory(),
-        keys = "boat1.full",
-        values = function() return(now(env))
-      ) %>%
-        log_(
-          "Sending final depart signal (boat full)"
-        ) %>% 
-        send(
-          signals = "boat1.depart",
-          delay = 0
-        )
-    )
-  ) %>%
-  trap("boat1.departed") %>%
-  wait() %>%
-  release("boat.area.1") %>%
-  timeout(journey.time) %>%
-  log_("Arrived!")
-
-boat.1 <- trajectory("Boat 1") %>%
-  timeout(boat.first.arrival) %>%
-  seize("area1") %>%
-  timeout(pickup.epsilon) %>%
-  set_capacity(
-    resource="boat.area.1",
-    value = boat.max.capacity,
-    mod = "+"
-  ) %>%
-  trap(
-    "boat1.depart",
-    handler = trajectory() %>%
-      log_("Received boat1.depart signal") %>%
-      rollback(
-        amount = 2,
-        check = function(){
-          count <- get_global(env,"boat1.count")
-          occ <- get_global(env,"boat1.occupied")
-          sat <- get_global(env,"boat1.saturated")
-          full <- get_global(env,"boat1.full")
-          time.now <- now(env)
-          if((count >=1) && (time.now - occ >= t.1)) return(FALSE)
-          else if((count >= n) && (time.now - sat) >= t.n) return(FALSE)
-          else if(count >= m) return(FALSE)
-          else return(TRUE)
+ca.migrant.trajectory <- function(area.index){
+  journey.time <- pickup.areas$transit.time[area.index]
+  area.migrant <- trajectory(paste("Migrant",area.index,sep="_")) %>%
+    seize(paste("boat.area",area.index,sep="_")) %>%
+    set_global(
+      keys = paste("boat.count",area.index,sep="_"),
+      values = 1,
+      mod = "+"
+    ) %>% 
+    branch(
+      option = function(){
+        boat.count <- get_global(env,paste("boat.count",area.index,sep="_"))
+        boat.type <- get_global(env,paste("boat.type",area.index,sep="_"))
+        n <- ship.attributes$sat.capacity[boat.type]
+        m <- ship.attributes$supersat.capacity[boat.type]
+        if(boat.count == 1){
+          return(1)
+        } else if(boat.count==n){
+          return(2)
+        } else if(boat.count==m){
+          return(3)
+        } else {
+          return(0)
         }
+      },
+      continue = TRUE,
+      list(
+        "1" = set_global(
+          trajectory(),
+          keys = paste("boat.occupied",area.index,sep = "_"),
+          values = function() return(now(env))
+        ) %>%
+          log_(
+            "Sending 1st depart signal (1st migrant boarded)"
+          ) %>%
+          send(
+            signals = paste("boat.depart",area.index,sep="_"),
+            delay = function(){
+              boat.type <- get_global(env,paste("boat.type",area.index,sep="_"))
+              t.1 <- ship.attributes$occupied.time[boat.type]
+              return(t.1)
+            }
+          ),
+        "2" = set_global(
+          trajectory(),
+          keys = paste("boat.saturated",area.index,sep = "_"),
+          values = function() return(now(env))
+        ) %>%
+          log_(
+            "Sending 2nd depart signal (boat saturated)"
+          ) %>% 
+          send(
+            signals = paste("boat.depart",area.index,sep="_"),
+            delay = function(){
+              boat.type <- get_global(env,paste("boat.type",area.index,sep="_"))
+              t.n <- ship.attributes$sat.time[boat.type]
+              return(t.n)
+            }
+          ),
+        "3" = set_global(
+          trajectory(),
+          keys = paste("boat.supersaturated",area.index,sep = "_"),
+          values = function() return(now(env))
+        ) %>%
+          log_(
+            "Sending final depart signal (boat full)"
+          ) %>% 
+          send(
+            signals = paste("boat.depart",area.index,sep="_"),
+            delay = 0
+          )
       )
-  ) %>%
-  wait() %>%
-  log_("Boat 1 Departed") %>%
-  set_capacity(
-    resource = "boat.area.1",
-    value = -boat.max.capacity,
-    mod = "+"
-  ) %>%
-  timeout(pickup.epsilon) %>%
-  release("area1") %>%
-  send("boat1.departed") %>%
-  untrap("boat1.depart") %>% 
-  set_global(
-    "boat1.count",
-    0
-  ) %>%
-  timeout(boat.return.time) %>%
-  rollback(13)
-
-
-#' ### Test of the boat-migrant model
-
-env <- simmer(
-  log_level = Inf
-) %>%
-  add_generator(
-    "migrants",
-    migrant.1,
-    at(0:20)
     ) %>%
-  add_generator(
-    "boat 1",
-    boat.1,
-    at(5)
-  ) %>%
-  add_resource(
-    "boat.area.1",
-    capacity = 0,
-    queue_size=Inf
-  ) %>%
-  add_resource(
-    "area1",
-    capacity = 1,
-    queue_size = Inf
-  ) %>%
-  add_global(
-    "boat1.count",
-    0
-  ) %>%
-  add_global(
-    "boat1.occupied",
-    0
-  ) %>%
-  add_global(
-    "boat1.saturated",
-    0
-  ) %>%
-  add_global(
-    "boat1.full",
-    0
-  )
-
-env %>%
-  run(until = 50)
-
-knitr::kable(get_mon_resources(env))
-knitr::kable(get_mon_attributes(env))
-knitr::kable(get_mon_arrivals(env))
+    trap(paste("boat.departed",area.index,sep="_")) %>%
+    wait() %>%
+    release(paste("boat.area",area.index,sep="_")) %>%
+    timeout(journey.time) %>%
+    trap(
+      signals = function(){
+        return(
+          sprintf("debark_%1.2f",now(env))
+        )
+      }
+    )%>%
+    wait()
+  return(area.migrant)
+}
 
 
-#' ## Pier arrival and camp processing trajectory
-#' 
-#' This section provides the processing and camp trajectories.  Sub-trajectories can be
-#' joined to other sub-trajectories using the `join` method.
+#'
+#' #### Consolidation Area Boat Trajectories
 #' 
 #' 
 
+ca.boat.trajectory <- function(area.index,boat.type.index){
+  journey.time <- pickup.areas$transit.time[area.index]
+  boat.trajectory <- trajectory(paste("Boat",area.index,boat.type.index,sep="_")) %>%
+    timeout(boat.first.arrival) %>%
+    seize(paste("area",area.index,sep="_")) %>%
+    timeout(epsilon) %>%
+    set_capacity(
+      resource=paste("boat.area",area.index,sep="_"),
+      value = ship.attributes$supersat.capacity[boat.type.index],
+      mod = "+"
+    ) %>%
+    set_global(
+      keys = paste("boat.type",area.index,sep="_"),
+      values = boat.type.index
+    ) %>%
+    trap(
+      paste("boat.depart",area.index,sep="_"),
+      handler = trajectory() %>%
+        log_(sprintf("Received boat %i depart signal",area.index)) %>%
+        rollback(
+          amount = 2,
+          check = function(){
+            count <- get_global(env,paste("boat.count",area.index))
+            occ <- get_global(env,paste("boat.occupied",area.index))
+            sat <- get_global(env,paste("boat.saturated",area.index))
+            full <- get_global(env,paste("boat.full",area.index))
+            time.now <- now(env)
+            if((count >=1) && (time.now - occ >= ship.attributes$occupied.time[boat.type.index])) return(FALSE)
+            else if((count >= ship.attributes$sat.capacity[boat.type.index]) && (time.now - sat) >= ship.attributes$sat.time[boat.type.index]) return(FALSE)
+            else if(count >= ship.attributes$supersat.capacity[boat.type.index]) return(FALSE)
+            else return(TRUE)
+          }
+        )
+    ) %>%
+    wait() %>%
+    log_(sprintf("Boat %i Departed",area.index)) %>%
+    set_capacity(
+      resource = "boat.area.1",
+      value = -ship.attributes$supersat.capacity[boat.type.index],
+      mod = "+"
+    ) %>%
+    timeout(epsilon) %>%
+    release("area1") %>%
+    send("boat1.departed") %>%
+    untrap("boat1.depart") %>% 
+    set_global(
+      "boat1.count",
+      0
+    ) %>%
+    timeout(journey.time) %>%
+    set_attribute(
+      keys = "debark.signal",
+      values = function() return(now(env))
+    ) %>%
+    seize(
+      "berth",
+      amount = ship.attributes$berth.occupation[boat.type.index]
+    ) %>%
+    timeout(ship.attributes$offload.time[boat.type.index]) %>%
+    send(
+      signals = function(){
+        return(sprintf("debark_%1.2f",get_attribute(env,"debark.signal")))
+      }
+    ) %>%
+    release_all("berth") %>%
+    timeout(ship.attributes$recovery.time[boat.type.index]) %>%
+    timeout(journey.time) %>%
+    rollback(21)
+  return(boat.trajectory)
+}
 
-#' ### On-island transit trajectory
+
+#' ## Layer 3: Migrant Processing
 #' 
-#' On-island transit capacity will be handled by a generator objects.
-#' The following assumes there are `b` boats, and each requires a
-#' `rt`-hour round-trip time.  Boats will load int `epsilon` time
-#' units, and only operate for `b.hoursperday` hours each day.
+#' This section provides the processing and camp input requirements 
+#' and trajectories.  
+#' 
+#' This layer has many scheduled resourcing and timing
+#' inputs that take similar tabular forms.  
+#' 
+#' * CIS protection screening
+#' * CIS rescreening
+#' * ICE/JTF inprocessing
+#' * Health recovery inputs
+#' * Resettlement times
+#' * Repatriation times
+#' 
+#' Additionally, this layer has several capacity parameters
+#' that are not scheduled.
+#' 
+#' ### Scheduled Inputs
+#' 
+#' #### ICE/JTF Inprocessing and CIS Screening
+#' CIS protection status screening and ICE/JTF inprocessing have similar
+#' models and inputs.  In each case, service times are represented by
+#' a triangular distribution, and service centers are only open for
+#' a fixed number of hours per day.  The input structure allows for
+#' scheduling changes to capacity and service times.  The table below shows
+#' the structure for the ICE/JTF inprocessing schedule.
+#' 
 
-b <- 2
-rt <- 2
-transit.time <- 1 #Half of round trip for now
-epsilon <- 0.01
-boat.capacity <- 100
-
-interarrival.time <- rt/b
-start.boat.time <- 0 #first boat
-b.hoursperday <- 12
-
-boat.arrivals <- seq(start.boat.time,start.boat.time+12,interarrival.time)
-
-end.boat.time <- start.boat.time + b.hoursperday
-transit.schedule <- schedule(
-  c(0,
-    rbind(
-      boat.arrivals,
-      boat.arrivals+epsilon
+#+ echo=FALSE
+triangle.server.cols <- c(
+  "mode",
+  "min",
+  "max",
+  "server.count",
+  "service.hours"
+)
+inprocessing.schedule <- check_table(
+  as.data.frame(
+    read_excel(
+      processing.datafile,
+      sheet = "inprocessing"
     )
   ),
-  c(
-    0,
-    rep(c(100,0),length(boat.arrivals))
+  names.vector <- as.character(
+    paste(
+      "inprocessing",
+      triangle.server.cols,
+      sep="."
+    )
   ),
-  period = 24
+  error.d = "camp inprocessing"
+)
+cis.schedule <- check_table(
+  as.data.frame(
+    read_excel(
+      processing.datafile,
+      sheet = "cis.screening"
+    )
+  ),
+  names.vector <- as.character(
+    paste(
+      "cis.screening",
+      triangle.server.cols,
+      sep="."
+    )
+  ),
+  error.d = "CIS screening"
+)
+knitr::kable(
+  inprocessing.schedule,
+  row.names = FALSE,
+  align = c(
+    "l",
+    rep("c",ncol(inprocessing.schedule)-1)
+  )
 )
 
-migrant.transit <- trajectory() %>%
-  seize(
-    "transit"
-  ) %>%
-  timeout(transit.time) %>%
-  release("transit")
 
 
-s<-simmer() %>%
-  add_generator(
-    "migrants",
-    migrant.transit,
-    at(0)
-  ) %>%
-  add_resource(
-    "transit",
-    capacity = transit.schedule
-  ) %>% run(
-    until = 200
+#' 
+#' 
+#' #### CIS Rescreening
+#' 
+#' CIS Rescreening occurs for a fraction of the migrants whose protection
+#' status cannot be immediately determined.  The table below provides the
+#' input structure.
+#' 
+
+#+ echo=FALSE
+cis.rescreening <- check_table(
+  as.data.frame(
+    read_excel(
+      processing.datafile,
+      sheet = "cis.rescreening"
+    )
+  ),
+  names.vector <- c(
+    paste(
+      "rescreen.wait",
+      c(
+        "mode",
+        "max",
+        "min"
+      ),
+      sep="."
+    ),
+    "rescreen.rate"
+  ),
+  error.d = "CIS rescreening"
+)
+knitr::kable(
+  cis.rescreening,
+  row.names = FALSE,
+  align = c(
+    "l",
+    rep("c",ncol(cis.rescreening)-1)
   )
+)
 
-
-
-knitr::kable(get_mon_resources(s))
-knitr::kable(get_mon_attributes(s))
-knitr::kable(get_mon_arrivals(s))
-
-
-#' ### Migrant Camp In-processing
+#'
+#' #### Health Recovery
 #' 
-#' This trajectory handles the processing on GTMO.
-#' 
-#' 
+#' Health recovery is the amount of time it takes a sick migrant to
+#' recover and rejoin the processing queue.  The inputs structure is
+#' shown in the table below.
 
-# Helper function for gamma distribution
-gamma_params <- function(gamma.mean,gamma.sd){
-  alpha <- gamma.mean^2/gamma.sd^2
-  beta <- gamma.sd^2/gamma.mean
-  return(
+#+ echo=FALSE
+health.recovery <- check_table(
+  as.data.frame(
+    read_excel(
+      processing.datafile,
+      sheet = "health.recovery"
+    )
+  ),
+  names.vector <- paste(
+    "recovery",
     c(
-      alpha,
-      beta
-    )
+      "mode",
+      "max",
+      "min"
+    ),
+    sep="."
+  ),
+  error.d = "health recovery"
+)
+knitr::kable(
+  health.recovery,
+  row.names = FALSE,
+  align = c(
+    "l",
+    rep("c",ncol(health.recovery)-1)
   )
-}
-
-# Health timeout assume exponentially distributed.
-# Average time
-health.timeout.avg <- 24 # hours
-health_timeout <- function(){
-  return(rexp(1,1/health.timeout.avg))
-}
-
-# ICE agent interview time: assume gamma distribution.
-ice.mean <- 5/60 # hours
-ice.sd <- 2/60 # hours
-ice.gamma.params <- gamma_params(ice.mean,ice.sd)
-ice_timeout <- function(){
-  return(rgamma(1,shape=ice.gamma.params[1],scale=ice.gamma.params[2]))
-}
-
-# Security risk service time
-
-security.risk.min <- 90*24
-security.risk.max <- 360*24
-security_risk_service <- function(){
-  return(runif(1,security.risk.min,security.risk.max))
-}
-
-# CIS screening time: assume gamma distribution
-cis.mean <- 20/60
-cis.sd <- 10/60
-cis.gamma.params <- gamma_params(cis.mean,cis.sd)
-cis_timeout <- function(){
-  return(rgamma(1,shape=cis.gamma.params[1],scale=cis.gamma.params[2]))
-}
+)
 
 
-# CIS rescreening
-# What percent need follow-on interviews?
-cis.rescreen.rate <- 0.2
-# Assume gamma distribution here as well.
-cis.rescreen.mean <- 48 #hours
-cis.rescreen.sd <- 48 #hours
-rescreen.gamma.params <- gamma_params(cis.rescreen.mean,cis.rescreen.sd)
-cis_rescreen_timeout <- function(){
-  return(rgamma(1,shape=rescreen.gamma.params[1],scale=rescreen.gamma.params[2]))
-}
+#' 
+#' #### Security Risk Repatriation
+#' 
+#' The security risk repatriation time inputs follow the same structure
+#' as the health recovery time inputs.
+#' 
+#' 
 
-# Protected resettlement time: assume gamma distribution
-resettle.mean <- 24*60
-resettle.sd <- 24*30
-resettle.gamma.params <- gamma_params(resettle.mean,resettle.sd)
-resettle_timeout <- function(){
-  return(
-    rgamma(
-      1,
-      shape = resettle.gamma.params[1],
-      scale = resettle.gamma.params[2]
+#+ echo=FALSE
+sec.repat <- check_table(
+  as.data.frame(
+    read_excel(
+      processing.datafile,
+      sheet = "repat.sec.risk"
     )
+  ),
+  names.vector <- paste(
+    "sec.risk.repat",
+    c(
+      "mode",
+      "max",
+      "min"
+    ),
+    sep="."
+  ),
+  error.d = "security risk repatriation"
+)
+knitr::kable(
+  sec.repat,
+  row.names = FALSE,
+  align = c(
+    "l",
+    rep("c",ncol(sec.repat)-1)
   )
-}
+)
 
-# Non-Protected resettlement time: assume gamma distribution
-repatriate.mean <- 24*20
-repatriate.sd <- 24*7
-repatriate.gamma.params <- gamma_params(repatriate.mean,repatriate.sd)
-repatriate_timeout <- function(){
-  return(
-    rgamma(
-      1,
-      shape = repatriate.gamma.params[1],
-      scale = repatriate.gamma.params[2]
+
+#'
+#' #### Repatriation and Resettlement Rates
+#' 
+#' The repatriation and resettlement rate inputs are provided as triangle 
+#' distributions for numbers of repatriations per day.  The table below
+#' shows these inputs for Haitian repatriations, but the same formats
+#' apply for all (excepting security risks) repatriations and resettlements.
+#' 
+
+move.outs <- data.frame(matrix(ncol=6,nrow=0),stringsAsFactors = FALSE)
+names(move.outs) <- c(
+  "time",
+  "mode",
+  "min",
+  "max",
+  "nationality",
+  "resettle.repatriate"
+)
+
+for(n in nationality.probs[,1]){
+  for(r in c("repat","resettle")){
+    temp.df <- check_table(
+      as.data.frame(
+        read_excel(
+          processing.datafile,
+          sheet = paste(r,n,sep=".")
+        )
+      ),
+      names.vector <- paste(
+        n,
+        r,
+        c(
+          "mode",
+          "min",
+          "max"
+        ),
+        sep="."
+      ),
+      error.d = paste(n,r,sep=" ")
     )
-  )
+    if(n == "Haitian" && r == "repat") df <- temp.df
+    names(temp.df) <- c(
+      "time",
+      "mode",
+      "min",
+      "max",
+      "nationality"
+    )
+    temp.df$nationality <- rep(n,nrow(temp.df))
+    temp.df$resettle.repatriate <- rep(r,nrow(temp.df))
+    move.outs <- rbind(move.outs,temp.df)
+  }
 }
 
-welcome.to.GTMO <- trajectory(name = "GTMO") %>%
-  # Initial health separation
-  branch(
-    option = function(){
-      health <- get_attribute(env,"health")
-      if(health == "Disease"){
-        return(1)
-      } else {
-        return(0)
-      }
-    },
-    continue = TRUE, #This guy jumps right back in line once he feels better
-    trajectory(name="Sick") %>%
-      timeout(
-        health_timeout
+knitr::kable(
+  df,
+  row.names = FALSE,
+  align = c(
+    "l",
+    rep("c",ncol(df)-1)
+  )
+)
+
+
+#' 
+#' ### Unscheduled Inputs
+#' 
+#' The remaining inputs for the migrant processing layer address berthing
+#' capacity at the pier and on-island ferry transit inputs.  All of these
+#' inputs are handled in a single table of inputs.  On island transit
+#' is assumed to follow a uniform time distribution.
+#' 
+
+proc.params <- check_table(
+  as.data.frame(
+    read_excel(
+      processing.datafile,
+      sheet = "berth.ferry.params"
+    )
+  ),
+  names.vector = c(
+    "Value",
+    "value"
+  ),
+  error.d = "processing location parameters",
+  row1.vector = c(
+    "ferry.count",
+    "ferry.capacity",
+    "ferry.transit.time",
+    "ferry.reset",
+    "ferry.service.hours",
+    "big.boat.berth.capacity"
+  )
+)
+knitr::kable(
+  proc.params,
+  row.names = FALSE,
+  align = c(
+    "l",
+    rep("c",ncol(proc.params)-1)
+  )
+)
+
+
+#'
+#' ### Processing trajectory
+#' 
+#' We have everything we need to complete the processing trajectory and
+#' then build the simulation.  Some of the inputs from each layer will be
+#' used in initializing the simulation and allocation or scheduleing resources.
+#' 
+
+# Helper function
+triangle_quantile <- function(r,t.mode,t.min,t.max){
+  ymax = 2/(t.max-t.min)
+  s <- as.numeric(r > (t.mode-t.min)*ymax/2)
+  x.upper <- t.max - sqrt(
+    t.max^2 - (t.max*t.min-t.min*t.mode+t.max*t.mode+2*r*t.max/ymax-2*r*t.mode/ymax)
+  )
+  x.lower <- t.min + sqrt(
+    t.min^2 + (2*r*(t.mode-t.min)/ymax - t.min^2)
+  )
+  return((1-s)*x.lower+s*x.upper)
+}
+
+small.epsilon <- 0.001
+
+rtriang <- function(t.mode,t.min,t.max){
+  r <- runif(1)
+  return(triangle_quantile(r,t.mode,t.min,t.max))
+}
+
+
+processing_trajectory <- function(){
+  repat.trajectory.list <- list()
+  for(n in nationality.probs[,1]){
+    for(protected in c("repat","resettle")){
+      repat.trajectory.list <- append(
+        repat.trajectory.list,
+        trajectory() %>%
+          seize(paste(protected,n,sep="-")) %>%
+          timeout(runif(1,0.5,24)) %>%
+          release(paste(protected,n,sep="-"))
       )
-  ) %>%
-  seize("ICE.agent") %>%
-  timeout(
-    ice_timeout
-  ) %>%
-  release("ICE.agent") %>%
-  branch(
-    option = function() {
-      security.risk <- get_attribute(env,"security.risk")
-      if(security.risk == "Security Risk"){
-        return(1)
-      } else {
-        return(0)
+    }
+  }
+  welcome.to.GTMO <- trajectory(name = "GTMO") %>%
+      seize(
+        "transit-to-leeward"
+      ) %>%
+    timeout(2*small.epsilon) %>%
+    release("transit-to-leeward") %>%
+    timeout(
+        function(){
+          w <- which(proc.params$Parameter=="ferry.transit.time")
+          return(proc.params$Value[w])
+        }
+      ) %>%
+    # Initial health separation
+    branch(
+      option = function(){
+        health <- get_attribute(env,"health")
+        if(health == "Disease"){
+          return(1)
+        } else {
+          return(0)
+        }
+      },
+      continue = TRUE, #This guy jumps right back in line once he feels better
+      trajectory(name="Sick") %>%
+        timeout(
+          function(){
+            time.now <- now(env)
+            w <- max(which(health.recovery$time <= time.now))
+            return(
+              rtriang(
+                health.recovery$recovery.mode[w],
+                health.recovery$recovery.min[w],
+                health.recovery$recovery.max[w]
+              )
+            )
+          }
+        )
+    ) %>%
+    seize("ICE.agent") %>%
+    timeout(
+      function(){
+        time.now <- now(env)
+        w <- max(which(inprocessing.schedule$time <= time.now))
+        return(
+          rtriang(
+            inprocessing.schedule$inprocessing.mode[w],
+            inprocessing.schedule$inprocessing.min[w],
+            inprocessing.schedule$inprocessing.max[w]
+          )
+        )
       }
-    },
-    continue = FALSE,
-    trajectory(name="security.risk") %>%
-      timeout(security_risk_service)
-  ) %>%
-  seize("CIS.screener") %>%
-  timeout(
-    cis_timeout
-  ) %>%
-  release("CIS.screener") %>%
-  branch(
-    option = function(){
-      if(runif(1) < cis.rescreen.rate){
-        return(1)
-      } else {
-        return(0)
+    ) %>%
+    release("ICE.agent") %>%
+    seize(
+      "transit-to-windward"
+    ) %>%
+    timeout(2*small.epsilon) %>%
+    release("transit-to-windward") %>%
+    timeout(
+      function(){
+        w <- which(proc.params$Parameter=="ferry.transit.time")
+        return(proc.params$Value[w])
       }
-    },
-    continue = TRUE,
-    trajectory(name="re-screen") %>%
-      timeout(cis_rescreen_timeout)
-  ) %>% 
-  branch(
-    option = function() {
-      protected <- get_attribute(env,"protected")
-      if(protected == "Protected"){
-        return(1)
-      } else {
-        return(0)
+    ) %>%
+    branch(
+      option = function() {
+        security.risk <- get_attribute(env,"security.risk")
+        if(security.risk == "Security Risk"){
+          return(1)
+        } else {
+          return(0)
+        }
+      },
+      continue = FALSE,
+      trajectory(name="security.risk") %>%
+        timeout(
+          function(){
+            time.now <- now(env)
+            w <- max(which(sec.repat$time <= time.now))
+            return(
+              rtriang(
+                sec.repat$sec.risk.repat.mode[w],
+                sec.repat$sec.risk.repat.min[w],
+                sec.repat$sec.risk.repat.max[w]
+              )
+            )
+          }
+        )
+    ) %>%
+    seize("CIS.screener") %>%
+    timeout(
+      function(){
+        time.now <- now(env)
+        w <- max(which(cis.schedule$time <= time.now))
+        return(
+          rtriang(
+            cis.schedule$cis.screening.mode[w],
+            cis.schedule$cis.screening.min[w],
+            cis.schedule$cis.screening.max[w]
+          )
+        )
       }
-    },
-    continue = FALSE,
-    trajectory() %>%
-      timeout(
-        resettle_timeout
+    ) %>% 
+    release("CIS.screener") %>%
+    branch(
+      option = function(){
+        w <- max(which(cis.rescreening$time <= time.now))
+        cis.rescreen.rate <- cis.rescreening$rescreen.rate[w]
+        if(runif(1) < cis.rescreen.rate){
+          return(1)
+        } else {
+          return(0)
+        }
+      },
+      continue = TRUE,
+      trajectory(name="re-screen") %>%
+        timeout(
+          function(){
+            time.now <- now(env)
+            w <- max(which(cis.rescreening$time <= time.now))
+            return(
+              rtriang(
+                cis.rescreening$rescreen.mode[w],
+                cis.rescreening$rescreen.min[w],
+                cis.rescreening$rescreen.max[w]
+              )
+            )
+          }
+        )
+    ) %>%
+    branch(
+      option = function() {
+        protected <- get_attribute(env,"protected")
+        n <- get_attribute(env,"nationality")
+        return(2 * n + 1 - protected)
+      },
+      continue = TRUE,
+      repat.trajectory.list
+    )
+  return(welcome.to.GTMO)
+}
+
+
+#'
+#' # Processing
+#' 
+#' In order to simulate the migration flow, the trajectories must be assembled
+#' into a simulation environment and resource schedulind must be applied.
+#' Some resource schedules must be built into the simulation environment
+#' based on inputs from the three layers.
+
+processing.trajectory <- processing_trajectory()
+area.trajectories <- lapply(1:nrow(pickup.areas),ca.migrant.trajectory)
+area.trajectories <- lapply(
+  1:nrow(pickup.areas),
+  function(x)
+    return(
+      join(
+        ca.migrant.trajectory(x),
+        processing.trajectory
       )
-  ) %>%
-  timeout(
-    repatriate_timeout
-  )
+    )
+)
+names(area.trajectories) <- pickup.areas$pickup.area
+total.trajectories <- source_trajectories(area.trajectories)
 
 
 
 
 
+
+
+
+#' b <- 2
+#' rt <- 2
+#' transit.time <- 1 #Half of round trip for now
+#' epsilon <- 0.01
+#' boat.capacity <- 100
+#' 
+#' interarrival.time <- rt/b
+#' start.boat.time <- 0 #first boat
+#' b.hoursperday <- 12
+#' 
+#' boat.arrivals <- seq(start.boat.time,start.boat.time+12,interarrival.time)
+#' 
+#' end.boat.time <- start.boat.time + b.hoursperday
+#' transit.schedule <- schedule(
+#'   c(0,
+#'     rbind(
+#'       boat.arrivals,
+#'       boat.arrivals+epsilon
+#'     )
+#'   ),
+#'   c(
+#'     0,
+#'     rep(c(100,0),length(boat.arrivals))
+#'   ),
+#'   period = 24
+#' )
+#' 
+#' migrant.transit <- trajectory() %>%
+#'   seize(
+#'     "transit"
+#'   ) %>%
+#'   timeout(transit.time) %>%
+#'   release("transit")
+#' 
+#' 
+#' s<-simmer() %>%
+#'   add_generator(
+#'     "migrants",
+#'     migrant.transit,
+#'     at(0)
+#'   ) %>%
+#'   add_resource(
+#'     "transit",
+#'     capacity = transit.schedule
+#'   ) %>% run(
+#'     until = 200
+#'   )
+#' 
+#' 
+#' 
+#' knitr::kable(get_mon_resources(s))
+#' knitr::kable(get_mon_attributes(s))
+#' knitr::kable(get_mon_arrivals(s))
+#' 
+#' 
+#' #' ### Migrant Camp In-processing
+#' #' 
+#' #' This trajectory handles the processing on GTMO.
+#' #' 
+#' #' 
+#' 
+#' # Helper function for gamma distribution
+#' gamma_params <- function(gamma.mean,gamma.sd){
+#'   alpha <- gamma.mean^2/gamma.sd^2
+#'   beta <- gamma.sd^2/gamma.mean
+#'   return(
+#'     c(
+#'       alpha,
+#'       beta
+#'     )
+#'   )
+#' }
+#' 
+#' # Health timeout assume exponentially distributed.
+#' # Average time
+#' health.timeout.avg <- 24 # hours
+#' health_timeout <- function(){
+#'   return(rexp(1,1/health.timeout.avg))
+#' }
+#' 
+#' # ICE agent interview time: assume gamma distribution.
+#' ice.mean <- 5/60 # hours
+#' ice.sd <- 2/60 # hours
+#' ice.gamma.params <- gamma_params(ice.mean,ice.sd)
+#' ice_timeout <- function(){
+#'   return(rgamma(1,shape=ice.gamma.params[1],scale=ice.gamma.params[2]))
+#' }
+#' 
+#' # Security risk service time
+#' 
+#' security.risk.min <- 90*24
+#' security.risk.max <- 360*24
+#' security_risk_service <- function(){
+#'   return(runif(1,security.risk.min,security.risk.max))
+#' }
+#' 
+#' # CIS screening time: assume gamma distribution
+#' cis.mean <- 20/60
+#' cis.sd <- 10/60
+#' cis.gamma.params <- gamma_params(cis.mean,cis.sd)
+#' cis_timeout <- function(){
+#'   return(rgamma(1,shape=cis.gamma.params[1],scale=cis.gamma.params[2]))
+#' }
+#' 
+#' 
+#' # CIS rescreening
+#' # What percent need follow-on interviews?
+#' cis.rescreen.rate <- 0.2
+#' # Assume gamma distribution here as well.
+#' cis.rescreen.mean <- 48 #hours
+#' cis.rescreen.sd <- 48 #hours
+#' rescreen.gamma.params <- gamma_params(cis.rescreen.mean,cis.rescreen.sd)
+#' cis_rescreen_timeout <- function(){
+#'   return(rgamma(1,shape=rescreen.gamma.params[1],scale=rescreen.gamma.params[2]))
+#' }
+#' 
+#' # Protected resettlement time: assume gamma distribution
+#' resettle.mean <- 24*60
+#' resettle.sd <- 24*30
+#' resettle.gamma.params <- gamma_params(resettle.mean,resettle.sd)
+#' resettle_timeout <- function(){
+#'   return(
+#'     rgamma(
+#'       1,
+#'       shape = resettle.gamma.params[1],
+#'       scale = resettle.gamma.params[2]
+#'     )
+#'   )
+#' }
+#' 
+#' # Non-Protected resettlement time: assume gamma distribution
+#' repatriate.mean <- 24*20
+#' repatriate.sd <- 24*7
+#' repatriate.gamma.params <- gamma_params(repatriate.mean,repatriate.sd)
+#' repatriate_timeout <- function(){
+#'   return(
+#'     rgamma(
+#'       1,
+#'       shape = repatriate.gamma.params[1],
+#'       scale = repatriate.gamma.params[2]
+#'     )
+#'   )
+#' }
+#' 
+#' welcome.to.GTMO <- trajectory(name = "GTMO") %>%
+#'   # Initial health separation
+#'   branch(
+#'     option = function(){
+#'       health <- get_attribute(env,"health")
+#'       if(health == "Disease"){
+#'         return(1)
+#'       } else {
+#'         return(0)
+#'       }
+#'     },
+#'     continue = TRUE, #This guy jumps right back in line once he feels better
+#'     trajectory(name="Sick") %>%
+#'       timeout(
+#'         health_timeout
+#'       )
+#'   ) %>%
+#'   seize("ICE.agent") %>%
+#'   timeout(
+#'     ice_timeout
+#'   ) %>%
+#'   release("ICE.agent") %>%
+#'   branch(
+#'     option = function() {
+#'       security.risk <- get_attribute(env,"security.risk")
+#'       if(security.risk == "Security Risk"){
+#'         return(1)
+#'       } else {
+#'         return(0)
+#'       }
+#'     },
+#'     continue = FALSE,
+#'     trajectory(name="security.risk") %>%
+#'       timeout(security_risk_service)
+#'   ) %>%
+#'   seize("CIS.screener") %>%
+#'   timeout(
+#'     cis_timeout
+#'   ) %>%
+#'   release("CIS.screener") %>%
+#'   branch(
+#'     option = function(){
+#'       if(runif(1) < cis.rescreen.rate){
+#'         return(1)
+#'       } else {
+#'         return(0)
+#'       }
+#'     },
+#'     continue = TRUE,
+#'     trajectory(name="re-screen") %>%
+#'       timeout(cis_rescreen_timeout)
+#'   ) %>% 
+#'   branch(
+#'     option = function() {
+#'       protected <- get_attribute(env,"protected")
+#'       if(protected == "Protected"){
+#'         return(1)
+#'       } else {
+#'         return(0)
+#'       }
+#'     },
+#'     continue = FALSE,
+#'     trajectory() %>%
+#'       timeout(
+#'         resettle_timeout
+#'       )
+#'   ) %>%
+#'   timeout(
+#'     repatriate_timeout
+#'   )
+#' 
+#' 
+#' 
+#' 
+#' 
