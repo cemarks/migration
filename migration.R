@@ -72,15 +72,23 @@ knitr::kable(
 #' 
 
 #+ echo=FALSE
-check_source_rates <- function(source.rates){
-  if(!all(as.character(source.rates$source) %in% as.character(migrant.sources$Source))){
-    stop("Invalid Source in source.rates input data.")
+check_table <- function(d,names.vector = migrant.sources$Source,error.d="",row1.vector = NULL){
+  if(!all(as.character(d[,1])[2:ncol(d)] %in% names.vector)){
+    stop(sprintf("Invalid column in %s input data.",error.d))
   }
+  if(!is.null(row1.vector)){
+    if(!all(as.character(d[,1]) %in% as.character(row1.vector)))){
+      stop(sprintf("Invalid category in %s data inputs.",error.d))
+    }
+  }
+  return(d)
 }
-source.rates <- as.data.frame(
-  read_excel(migrant.datafile,sheet = "source.rates")
+source.rates <- check_table(
+  as.data.frame(
+    read_excel(migrant.datafile,sheet = "source.rates")
+  ),
+  error.d = "migrant source rate"
 )
-check_source_rates(source.rates)
 knitr::kable(
   source.rates,
   align=c(
@@ -158,18 +166,13 @@ knitr::kable(
 #' the columns of probabilities in this table should sum to 1.
 
 #+ echo=FALSE
-check_family_status_probs <- function(fsp.data){
-  if(!all(as.character(fsp.data[,1]) %in% names(migrant.attributes$family.status))){
-    stop("Invalid family status category in family status probability inputs.")
-  }
-  if(!all(names(fsp.data)[2:ncol(fsp.data)] %in% as.character(migrant.sources$Source))){
-    stop("Invalid migrant source in family status probability inputs.")
-  }
-}
-family.status.probs <- as.data.frame(
-  read_excel(migrant.datafile,sheet = "family.status")
+family.status.probs <- check_table(
+  as.data.frame(
+    read_excel(migrant.datafile,sheet = "family.status")
+  ),
+  error.d = "family status",
+  row1.vector = names(migrant.attributes[['family.status']])
 )
-check_family_status_probs(family.status.probs)
 knitr::kable(
   family.status.probs,
   row.names = FALSE,
@@ -192,10 +195,13 @@ check_health_probs <- function(health.data){
     stop("Invalid migrant source in health status probability inputs.")
   }
 }
-health.probs <- as.data.frame(
-  read_excel(migrant.datafile,sheet = "health")
+health.probs <- check_table(
+  as.data.frame(
+    read_excel(migrant.datafile,sheet = "health")
+  ),
+  error.d = 'health',
+  row1.vector = names(migrant.attributes[["health"]])
 )
-check_health_probs(health.probs)
 knitr::kable(
   health.probs,
   row.names = FALSE,
@@ -210,18 +216,14 @@ knitr::kable(
 #' the columns of probabilities in this table should sum to 1.
 
 #+ echo=FALSE
-check_nationality_probs <- function(nationality.data){
-  if(!all(as.character(nationality.data[,1]) %in% names(migrant.attributes$nationality))){
-    stop("Invalid nationality status category in nationality status probability inputs.")
-  }
-  if(!all(names(nationality.data)[2:ncol(nationality.data)] %in% as.character(migrant.sources$Source))){
-    stop("Invalid migrant source in nationality status probability inputs.")
-  }
-}
-nationality.probs <- as.data.frame(
-  read_excel(migrant.datafile,sheet = "nationality")
+nationality.probs <- check_table(
+  as.data.frame(
+    read_excel(migrant.datafile,sheet = "nationality")
+  ),
+  error.d = 'nationality',
+  row1.vector = names(migrant.attributes[['nationality']])
 )
-check_nationality_probs(nationality.probs)
+
 knitr::kable(
   nationality.probs,
   row.names = FALSE,
@@ -242,10 +244,14 @@ knitr::kable(
 #' and `family.status` category.
 
 #+ echo=FALSE
-security.risk.probs <- as.data.frame(
-  read_excel(migrant.datafile,sheet = "security.risk")
+security.risk.probs <- check_table(
+  as.data.frame(
+    read_excel(migrant.datafile,sheet = "security.risk")
+  ),
+  error.d = 'security risk',
+  row1.vector = names(migrant.attributes[['family.status']])
 )
-check_family_status_probs(security.risk.probs)
+
 knitr::kable(
   security.risk.probs,
   row.names = FALSE,
@@ -261,18 +267,13 @@ knitr::kable(
 #' to the `Not protected` category.
 
 #+ echo=FALSE
-check_protected_probs <- function(protected.data){
-  if(!all(as.character(protected.data[,1]) %in% names(migrant.attributes$protected))){
-    stop("Invalid protected status category in protected status probability inputs.")
-  }
-  if(!all(names(protected.data)[2:ncol(protected.data)] %in% as.character(migrant.sources$Source))){
-    stop("Invalid migrant source in protected status probability inputs.")
-  }
-}
-protected.probs <- as.data.frame(
-  read_excel(migrant.datafile,sheet = "protected")
+protected.probs <- check_table(
+  as.data.frame(
+    read_excel(migrant.datafile,sheet = "protected")
+  ),
+  error.d = 'protected migrant rate',
+  row1.vector = names(migrant.attributes$protected)
 )
-check_protected_probs(protected.probs)
 knitr::kable(
   protected.probs,
   row.names = FALSE,
@@ -311,48 +312,32 @@ knitr::kable(
 #' table also includes timeout information and transit times for the consolidation areas.
 
 #+ echo=FALSE
-check_patrol_areas <- function(d){
-  # if(!all(as.character(d[,1]) %in% names(migrant.attributes$protected))){
-  #   stop("Invalid protected status category in protected status probability inputs.")
-  # }
-  if(
-    !all(
-      names(d)[2:ncol(d)] %in% 
-      c(
-        as.character(migrant.sources$Source),
-        "migrant.timeout",
-        "timeout.action",
-        "transit.time"
-      )
-    )
-  ){
-    stop("Invalid column in area routing probability inputs.")
-  }
-  if(
-    !all(
-      as.character(d$timeout.action) %in%
-      c(
-        as.character(d$patrol.area),
-        "depart"
-      )
-    )
-  ){
-    warning("Invalid timeout action for consolidation area.  Action must be a consolidation area or 'depart'.  Changing all invalid actions to 'depart'.")
-    d$timeout.action <- as.character(d$timeout.action)
-    d$timeout.action[which(!(d$timeout.action %in% c(as.character(d$patrol.area),"depart")))] <- "depart"
-  }
-  return(d)
+check_pickup_areas <- function(d,names.vector){
+  ct <- check_table(
+  d,
+  names.vector = names.vector,
+  error.d = "consolidation area"
+)
+
 }
-patrol.areas <- check_patrol_areas(
+pickup.areas <- check_table(
   as.data.frame(
     read_excel(
       ship.datafile,
-      sheet = "patrol.areas"
+      sheet = "pickup.areas"
     )
+  ),
+  names.vector = c(
+    as.character(migrant.sources$Source),
+    "migrant.timeout",
+    "timeout.action",
+    "transit.time"
   )
 )
+
+
 knitr::kable(
-  patrol.areas,
+  pickup.areas,
   row.names = FALSE,
   align = c("l","c","c","c","c","c")
 )
@@ -379,13 +364,14 @@ prob_generator_int <- function(prob.vector){
 ## Requires the trajectory routing table (dataframe) and the area trajectories as inputs.
 ## It will check to make sure the names in the trajectory routing dataframe match the 
 ## source names and consolidation area names.
-source_trajectories <- function(trajectory.routing.dataframe,area.trajectory.list){
-  mig.sources <- names(trajectory.routing.dataframe)[2:ncol(trajectory.routing.dataframe)]
+source_trajectories <- function(area.trajectory.list){
+  source.cols <- which(names(pickup.areas) %in% as.character(migrant.sources$Source))
+  mig.sources <- names(pickup.areas)[source.cols]
   if(any(sort(as.character(trajectory.routing.dataframe[,1])) != sort(as.character(names(consolidation.areas))))){
     stop("Source routing matrix does not match consolidation areas.")
   }
-  if(any(sort(mig.sources) != sort(migrant.sources))){
-    stop("Source routing matrix does not match migrant sources.")
+  if(!all(as.character(migrant.sources$Source) %in% as.character(mig.sources))){
+    warning("Pickup data does not contain columns for all sources.")
   }
   trajectory.routing.dataframe<-trajectory.routing.dataframe[
     match(
