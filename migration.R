@@ -26,6 +26,8 @@ library(simmer)
 library(readxl)
 migrant.datafile <- "F:/Desktop/Rscripts/migration/migrant_inputs.xlsx"
 areas.datafile <- "F:/Desktop/Rscripts/migration/ship_info.xlsx"
+migrant.datafile <- "/home/cemarks/Projects/migration/migrant_inputs.xlsx"
+areas.datafile <- "/home/cemarks/Projects/migration/ship_info.xlsx"
 #' # Models and Inputs 
 #' 
 #' This simulation consists of three layers:
@@ -41,7 +43,12 @@ areas.datafile <- "F:/Desktop/Rscripts/migration/ship_info.xlsx"
 
 
 #+ echo=FALSE,fig.width=4
-migrant.sources <- read_excel(migrant.datafile,sheet="sources")
+migrant.sources <- as.data.frame(
+  read_excel(
+    migrant.datafile,
+    sheet="sources"
+  )
+)
 knitr::kable(
   data.frame(
     migrant.sources
@@ -73,11 +80,11 @@ knitr::kable(
 
 #+ echo=FALSE
 check_table <- function(d,names.vector = migrant.sources$Source,error.d="",row1.vector = NULL){
-  if(!all(as.character(d[,1])[2:ncol(d)] %in% names.vector)){
+  if(!all(names(d)[2:ncol(d)] %in% names.vector)){
     stop(sprintf("Invalid column in %s input data.",error.d))
   }
   if(!is.null(row1.vector)){
-    if(!all(as.character(d[,1]) %in% as.character(row1.vector)))){
+    if(!all(as.character(d[,1]) %in% as.character(row1.vector))){
       stop(sprintf("Invalid category in %s data inputs.",error.d))
     }
   }
@@ -87,7 +94,12 @@ source.rates <- check_table(
   as.data.frame(
     read_excel(migrant.datafile,sheet = "source.rates")
   ),
-  error.d = "migrant source rate"
+  error.d = "migrant source rate",
+  names.vector = c(
+    "Time",
+    "Source",
+    "Rate"
+  )
 )
 knitr::kable(
   source.rates,
@@ -108,29 +120,29 @@ knitr::kable(
 #+ echo=FALSE
 migrant.attributes <- list(
   "family.status" = c(
-    "M/Accompanied" = 1,
-    "F/Accompanied" = 2,
-    "Ch/Accompanied" = 3,
-    "M/Unaccompanied" = 4,
-    "F/Unaccompanied" = 5,
-    "Ch/Unaccompanied" = 6
+    "M/Accompanied",
+    "F/Accompanied",
+    "Ch/Accompanied",
+    "M/Unaccompanied",
+    "F/Unaccompanied",
+    "Ch/Unaccompanied"
   ),
   "health" = c(
-    "Disease" = 1,
-    "No Disease" = 0
+    "Disease",
+    "No Disease"
   ),
   "nationality" = c(
-    "Haitian" = 0,
-    "Cuban" = 1,
-    "Other" = 2
+    "Haitian",
+    "Cuban",
+    "Other"
   ),
   "security.risk" = c(
-    "Security Risk" = 1,
-    "No Security Risk" = 0
+    "Security Risk",
+    "No Security Risk"
   ),
   "protected" = c(
-    "Protected" = 1,
-    "Not Protected" = 0
+    "Protected",
+    "Not Protected"
   )
 )
 
@@ -143,7 +155,7 @@ knitr::kable(
       migrant.attributes,
       function(x){
         return(
-          paste(x,names(x),sep=": ",collapse="<br>")
+          paste(x,collapse="<br>")
         )
       }
     )
@@ -171,7 +183,7 @@ family.status.probs <- check_table(
     read_excel(migrant.datafile,sheet = "family.status")
   ),
   error.d = "family status",
-  row1.vector = names(migrant.attributes[['family.status']])
+  row1.vector = migrant.attributes[['family.status']]
 )
 knitr::kable(
   family.status.probs,
@@ -200,7 +212,7 @@ health.probs <- check_table(
     read_excel(migrant.datafile,sheet = "health")
   ),
   error.d = 'health',
-  row1.vector = names(migrant.attributes[["health"]])
+  row1.vector = migrant.attributes[["health"]]
 )
 knitr::kable(
   health.probs,
@@ -221,7 +233,7 @@ nationality.probs <- check_table(
     read_excel(migrant.datafile,sheet = "nationality")
   ),
   error.d = 'nationality',
-  row1.vector = names(migrant.attributes[['nationality']])
+  row1.vector = migrant.attributes[['nationality']]
 )
 
 knitr::kable(
@@ -249,8 +261,14 @@ security.risk.probs <- check_table(
     read_excel(migrant.datafile,sheet = "security.risk")
   ),
   error.d = 'security risk',
-  row1.vector = names(migrant.attributes[['family.status']])
+  row1.vector = migrant.attributes[['family.status']]
 )
+security.risk.probs <- security.risk.probs[
+  match(
+    as.character(family.status.probs[,1]),
+    as.character(security.risk.probs[,1])
+  ),
+]
 
 knitr::kable(
   security.risk.probs,
@@ -272,7 +290,7 @@ protected.probs <- check_table(
     read_excel(migrant.datafile,sheet = "protected")
   ),
   error.d = 'protected migrant rate',
-  row1.vector = names(migrant.attributes$protected)
+  row1.vector = migrant.attributes$protected
 )
 knitr::kable(
   protected.probs,
@@ -312,18 +330,32 @@ knitr::kable(
 #' table also includes timeout information and transit times for the consolidation areas.
 
 #+ echo=FALSE
-check_pickup_areas <- function(d,names.vector){
-  ct <- check_table(
-  d,
-  names.vector = names.vector,
-  error.d = "consolidation area"
-)
-
+check_pickup_areas <- function(d,names.vector,error.d="consolidation area"){
+  d <- check_table(
+    d,
+    names.vector = names.vector,
+    error.d = "consolidation area"
+  )
+  if(!all(as.character(migrant.sources$Source) %in% names(d))){
+    stop("Not all migrant sources have columns in pickup area input")
+  }
+  timeout.action.possibilities <- c(
+    "depart",
+    as.character(
+      d[,1]
+    )
+  )
+  w <- which(!(as.character(d$timeout.action) %in% timeout.action.possibilities))
+  if(length(w) > 0){
+    warning("Invalid entries for timeout action in pickup area input table.  Invalid entries will be changed to 'depart'.")
+    d$timeout.action[w] <- "depart"
+  }
+  return(d)
 }
-pickup.areas <- check_table(
+pickup.areas <- check_pickup_areas(
   as.data.frame(
     read_excel(
-      ship.datafile,
+      areas.datafile,
       sheet = "pickup.areas"
     )
   ),
@@ -350,7 +382,7 @@ knitr::kable(
 #' according to the routing probabilities.  
 #' 
 
-# Helper function
+# Helper functions
 prob_generator_int <- function(prob.vector){
   # Renormalize
   prob.vector <- prob.vector/sum(prob.vector)
@@ -359,40 +391,93 @@ prob_generator_int <- function(prob.vector){
   w <- which(cum.prob > r)[1]
   return(w)
 }
+prob_generator <- function(input.table,mig.source){
+  # Renormalize
+  w <- prob_generator_int(input.table[,mig.source])
+  return(
+    list(
+      key = input.table[w,1],
+      value = w
+    )
+  )
+}
+security_risk_prob_generator <- function(family.status.value,mig.source){
+  p <- security.risk.probs[family.status.value,mig.source]
+  r <- runif(1)
+  if(r <= 0){
+    return(1) # Security Risk
+  } else {
+    return(2)
+  }
+}
+
+get_output <- function(function.call,probs){
+  p <- prob_generator(probs)
+  n <- as.character(function.call)
+  n <- sub("_",".",n,fixed=TRUE)
+  output <- value_extractor(
+    n,
+    p
+  )
+  return(output)
+}
+
+
+migrant_attributes <- function(mig.source){
+  family.status <- prob_generator(family.status.probs,mig.source)$value
+  migrant.health <- prob_generator(health.probs,mig.source)$value
+  migrant.nationality <- prob_generator(nationality.probs,mig.source)$value
+  security.risk <- security_risk_prob_generator(family.status,mig.source)
+  migrant.protected <- prob_generator(protected.probs,mig.source)$value
+  return(
+    c(
+      family.status = family.status,
+      health = migrant.health,
+      nationality = migrant.nationality,
+      security.risk = security.risk,
+      protected = migrant.protected
+    )
+  )
+}
 
 # Source trajectory generator
 ## Requires the trajectory routing table (dataframe) and the area trajectories as inputs.
 ## It will check to make sure the names in the trajectory routing dataframe match the 
 ## source names and consolidation area names.
+check_area_trajectory_list <- function(atl){
+  if(!all(names(atl) %in% as.character(pickup.areas[,1]))){
+    stop("Pickup Area Trajectory Name Mismatch!")
+  }
+  s <- match(
+    as.character(pickup.areas[,1]),
+    names(atl)
+  )
+  return(atl[s])
+}
 source_trajectories <- function(area.trajectory.list){
+  atl <- check_area_trajectory_list(area.trajectory.list)
   source.cols <- which(names(pickup.areas) %in% as.character(migrant.sources$Source))
   mig.sources <- names(pickup.areas)[source.cols]
-  if(any(sort(as.character(trajectory.routing.dataframe[,1])) != sort(as.character(names(consolidation.areas))))){
-    stop("Source routing matrix does not match consolidation areas.")
-  }
   if(!all(as.character(migrant.sources$Source) %in% as.character(mig.sources))){
     warning("Pickup data does not contain columns for all sources.")
   }
-  trajectory.routing.dataframe<-trajectory.routing.dataframe[
-    match(
-      as.character(
-        names(
-          consolidation.areas
-        )
-      ),
-      as.character(
-        trajectory.routing.dataframe[,1]
-      )
-    ),
-  ]
   output <- list()
   for(i in 1:length(mig.sources)){
-    mig.source <- names(migrant.sources)[which(migrant.sources==i)]
-    j <- which(mig.sources==mig.source)
-    p <- trajectory.routing.dataframe[,mig.source]
+    p <- pickup.areas[,mig.source]
     output[[i]] <- trajectory() %>%
       set_attribute(
-        
+        keys = c(
+          "family.status",
+          "health",
+          "nationality",
+          "security.risk",
+          "protected"
+        ),
+        values = as.numeric(
+          migrant.attributes(
+            mig.source
+          )
+        )
       )
       branch(
         option = function(){
@@ -400,7 +485,7 @@ source_trajectories <- function(area.trajectory.list){
           return(route)
         },
         continue = FALSE,
-        area.trajectory.list
+        atl
       )
   }
   return(output)
@@ -555,171 +640,6 @@ ca.migrant.trajectories <- function(
 
 
 
-# Helper function
-prob_generator <- function(named.probability.vector){
-  # Renormalize
-  prob.vector <- named.probability.vector/sum(named.probability.vector)
-  cum.prob <- cumsum(prob.vector)
-  r <- runif(1)
-  w <- which(cum.prob > r)[1]
-  return(names(cum.prob)[w])
-}
-
-value_extractor <- function(attribute.key,attribute.category){
-  return(
-    migrant.attributes[[attribute.key]][attribute.category]
-  )
-}
-
-get_output <- function(function.call,probs){
-  p <- prob_generator(probs)
-  n <- as.character(function.call)
-  n <- sub("_",".",n,fixed=TRUE)
-  output <- value_extractor(
-    n,
-    p
-  )
-  return(output)
-}
-
-# Family Status
-family_status <- function(...){
-  # These should be manually entered
-  # Verify the categories are correct.
-  probs <- c(
-    "M/Accompanied" = 0.16,
-    "F/Accompanied" = 0.16,
-    "Ch/Accompanied" = 0.16,
-    "M/Unaccompanied" = 0.16,
-    "F/Unaccompanied" = 0.16,
-    "Ch/Unaccompanied" = 0.16
-  )
-  m <- match.call()[1]
-  return(
-    get_output(
-      m,probs
-    )
-  )
-}
-
-# Health
-health <- function(...){
-  # For binary variables, just enter a single probability
-  # Verify the categories are correct.
-  probs <- c(
-    "Disease" = 0.16
-  )
-  probs <- c(
-    probs,
-    "No Disease" = 1 - as.numeric(probs["Disease"])
-  )
-  m <- match.call()[1]
-  return(
-    get_output(
-      m,probs
-    )
-  )
-}
-
-# Nationality 
-
-nationality <- function(...){
-  # These should be manually entered
-  # Verify the categories are correct.
-  probs <- c(
-    "Haitian" = 0.84,
-    "Cuban" = .16,
-    "Other" = 0
-  )
-  m <- match.call()[1]
-  return(
-    get_output(
-      m,probs
-    )
-  )
-}
-
-# Security Risk
-
-security_risk <- function(family.status,migrant.nationality,...){
-  # For binary variables, just enter a single probability
-  if(family.status == "M/Unaccompanied" && migrant.nationality == "Haitian"){
-    probs <- c(
-      "Security Risk" = 0.1
-    )
-  } else if(family.status == "M/Unaccompanied" && migrant.nationality == "Cuban"){
-    probs <- c(
-      "Security Risk" = 0.4
-    )
-  } else if(migrant.nationality == "Cuban") {
-    probs <- c(
-      "Security Risk" = 0.1
-    )
-  } else {
-    probs <- c(
-      "Security Risk" = 0.01
-    )
-  }
-  probs <- c(
-    probs,
-    "No Security Risk" = 1 - as.numeric(probs["Security Risk"])
-  )
-  m <- match.call()[1]
-  return(
-    get_output(
-      m,probs
-    )
-  )
-}
-
-# Protected
-
-protected <- function(migrant.nationality,security.risk,...){
-  # For binary variables, just enter a single probability
-  if(security.risk == "Security Risk"){
-    probs <- c(
-      "Protected" = 0
-    )
-  } else if(migrant.nationality == "Cuban"){
-    probs <- c(
-      "Protected" = 0.33
-    )
-  } else {
-    probs <- c(
-      "Protected" = 0.1
-    )
-  }
-  probs <- c(
-    probs,
-    "Not Protected" = 1 - as.numeric(probs["Protected"])
-  )
-  m <- match.call()[1]
-  return(
-    get_output(
-      m,probs
-    )
-  )
-}
-
-#' Summarize in a single migrant probability function that returns all 
-#' migrant attributes in a named vector
-
-migrant_attributes <- function(...){
-  family.status <- family_status(...)
-  migrant.health <- health(...)
-  migrant.nationality <- nationality(...)
-  security.risk <- security_risk(family.status,migrant.nationality,...)
-  migrant.protected <- protected(migrant.nationality,security.risk,...)
-  return(
-    c(
-      family.status = family.status,
-      health = migrant.health,
-      nationality = migrant.nationality,
-      security.risk = security.risk,
-      protected = migrant.protected
-    )
-  )
-}
 
 #' ## Migrant batching
 #' 
