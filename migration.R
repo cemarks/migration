@@ -27,12 +27,12 @@ library(readxl)
 # migrant.datafile <- "F:/Desktop/Rscripts/migration/migrant_inputs.xlsx"
 # areas.datafile <- "F:/Desktop/Rscripts/migration/ship_info.xlsx"
 # processing.datafile <- "F:/Desktop/Rscripts/migration/processing_inputs.xlsx"
-# migrant.datafile <- "/home/cemarks/Projects/migration/migrant_inputs.xlsx"
-# areas.datafile <- "/home/cemarks/Projects/migration/ship_info.xlsx"
-# processing.datafile <- "/home/cemarks/Projects/migration/processing_inputs.xlsx"
-migrant.datafile <- "/Users/cemarks/Projects/migration/migrant_inputs.xlsx"
-areas.datafile <- "/Users/cemarks/Projects/migration/ship_info.xlsx"
-processing.datafile <- "/Users/cemarks/Projects/migration/processing_inputs.xlsx"
+migrant.datafile <- "/home/cemarks/Projects/migration/migrant_inputs.xlsx"
+areas.datafile <- "/home/cemarks/Projects/migration/ship_info.xlsx"
+processing.datafile <- "/home/cemarks/Projects/migration/processing_inputs.xlsx"
+# migrant.datafile <- "/Users/cemarks/Projects/migration/migrant_inputs.xlsx"
+# areas.datafile <- "/Users/cemarks/Projects/migration/ship_info.xlsx"
+# processing.datafile <- "/Users/cemarks/Projects/migration/processing_inputs.xlsx"
 
 
 
@@ -628,8 +628,22 @@ epsilon <- function(){
 
 ca.migrant.trajectory <- function(area.index){
   journey.time <- pickup.areas$transit.time[area.index]
+  timeout.action <- pickup.areas$timeout.action[area.index]
+  if(timeout.action == 'depart'){
+    out.trajectory <- trajectory()
+  } else {
+    w <- which(pickup.areas[,1]==timeout.action)
+    # The following line could result in an infinite loop
+    # Add check that there is no circular logic in migrant flow.
+    out.trajectory <- ca.migrant.trajectory(w)
+  } 
   area.migrant <- trajectory(paste("Migrant",area.index,sep="_")) %>%
+    renege_in(
+      t = pickup.areas$migrant.timeout[area.index],
+      out = out.trajectory
+    ) %>%
     seize(paste("boat.area",area.index,sep="_")) %>%
+    renege_abort() %>% 
     set_global(
       keys = paste("boat.count",area.index,sep="_"),
       values = 1,
@@ -1116,6 +1130,43 @@ rtriang <- function(t.mode,t.min,t.max){
   return(triangle_quantile(r,t.mode,t.min,t.max))
 }
 
+ferry_trajectory <- function(){
+  ferry.transit.time <- proc.params$Value[which(
+    proc.params$Parameter == "ferry.transit.time"
+  )]
+  ferry.reset <- proc.params$Value[which(
+    proc.params$Parameter == "ferry.reset"
+  )]
+  ferry.capacity <- proc.params$Value[which(
+    proc.params$Parameter == "ferry.capacity"
+  )]
+  ferry.service.hours <- proc.params$Value[which(
+    proc.params$Parameter == "ferry.service.hours"
+  )]
+  ferry.trajectory <- trajectory() %>%
+    set_attribute(keys = "start.time",values = function() return(now(env))) %>%
+    set_capacity("transit-to-leeward",ferry.capacity,mod="+") %>%
+    timeout(small.epsilon) %>%
+    set_capacity("transit-to-leeward",-ferry.capacity,mod="+") %>%
+    timeout(ferry.transit.time) %>%
+    set_capacity("transit-to-windward",ferry.capacity,mod="+") %>%
+    timeout(small.epsilon) %>%
+    set_capacity("transit-to-windward",-ferry.capacity,mod="+") %>%
+    timeout(ferry.transit.time) %>% 
+    timeout(
+      function(){
+        time.now <- time(env)
+        start.time <- get_attribute(env,"start.time")
+        if(time.now + transit.time + reset.time - start.time > ferry.service.hours){
+          return(start.time + 24 - time.now)
+        } else {
+          return(ferry.reset)
+        }
+      }
+    ) %>%
+    rollback(10)
+  return(ferry.trajectory)
+}
 
 processing_trajectory <- function(){
   repat.trajectory.list <- list()
@@ -1125,7 +1176,7 @@ processing_trajectory <- function(){
         repat.trajectory.list,
         trajectory() %>%
           seize(paste(protected,n,sep="-")) %>%
-          timeout(runif(1,0.5,24)) %>%
+          timeout(runif(1,0.25,23.99)) %>%
           release(paste(protected,n,sep="-"))
       )
     }
@@ -1318,6 +1369,9 @@ for(i in 1:nrow(pickup.areas)){
   }
 }
 
+ferry.trajectory <- ferry_trajectory()
+
+
 #' ## Generator functions
 #' 
 #' The simulation requires an interarrival time distribution for each
@@ -1328,7 +1382,7 @@ for(i in 1:nrow(pickup.areas)){
 #' 
 
 migrant_function_generator <- function(mig.source){
-  d <- source.rates[which(source.rates$Source==ms),]
+  d <- source.rates[which(source.rates$Source==mig.source),]
   d <- d[order(d$Time),]
   return(
     function(){
@@ -1396,10 +1450,218 @@ for(i in 1:length(boat.trajectories)){
   )
 }
 
+# Add ferry generator
+ferry_start_times <- function(){
+  ferry.count <- proc.params$Value[which(proc.params$Parameter == "ferry.count")]
+  ferry.roundtrip <- 2*proc.params$Value[which(proc.params$Parameter == "ferry.transit.time")]
+  ferry.service.hours <- proc.params$Value[which(proc.params$Parameter == "ferry.service.hours")]
+  ferry.interval <- ferry.roundtrip/ferry.count
+  ferry.start.times <- seq(0,(ferry.count-1)*ferry.interval,ferry.interval)
+  ferry.start.times <- ferry.start.times + (24-ferry.service.hours)/2
+  return(ferry.start.times)
+}
+
+env <- add_generator(
+  env,
+  name_prefix = "ferry",
+  trajectory = ferry.trajectory,
+  distribution = at(ferry_start_times())
+)
 
 # Add resources
 
+# boats and areas
+for(i in 1:nrow(pickup.areas)){
+  env <- add_resource(
+    env,
+    name = paste("area",i,sep="_"),
+    capacity = 0,
+    queue_size=Inf,
+  ) %>%
+    add_resource(
+      name = paste("boat.area",i,sep="_"),
+      capacity = 0,
+      queue_size = Inf,
+    )
+}
 
+# berths
+
+w <- which(proc.params$Parameter=='big.boat.berth.capacity')
+
+env <- add_resource(
+  env,
+  name = "berth",
+  capacity = proc.params$Value[w],
+  queue_size = Inf
+)
+
+# transit capacities
+env <- add_resource(
+  env,
+  name = "transit-to-leeward",
+  capacity = 0,
+  queue_size = Inf
+
+) %>%
+  add_resource(
+    name="transit-to-windward",
+    capacity = 0,
+    queue_size = Inf
+  )
+
+# ICE.agent
+total.days <- 365*2
+total.hours <- total.days * 24
+# helper function
+create_schedule <- function(schedule.data.frame){
+  n <- grep("count",names(schedule.data.frame))
+  h <- grep("hours",names(schedule.data.frame))
+  sdf <- schedule.data.frame[order(schedule.data.frame$time),]
+  out.times <- sapply(
+    0:total.days,
+    function(x){
+      w <- max(which(sdf$time <= x))
+      if(length(w)==0){
+        return(NULL)
+      } else {
+        hrs <- sdf[w,h]
+        return(
+          c(
+            x*24+((24-hrs)/2),
+            x*24+((24-hrs)/2)+hrs
+          )
+        )
+      }
+    }
+  )
+  times <- sort(c(out.times))
+  v <- sapply(
+    times[seq(1,(length(times)-1),2)],
+    function(x){
+      w <- max(which(sdf$time <= x))
+      if(length(w)==0){
+        return(0)
+      } else {
+        return(sdf[w,n])
+      }
+    }
+  )
+  values <- rep(0,length(times))
+  values[seq(1,(length(times)-1),2)] <- v
+  return(
+    schedule(
+      timetable = times,
+      values = values
+    )
+  )
+  return(
+    schedule(
+      timetable = times,
+      values = servers
+    )
+  )
+}
+
+env <- add_resource(
+  env,
+  name = "ICE.agent",
+  capacity = create_schedule(inprocessing.schedule),
+  queue_size = Inf
+)
+
+# CIS.screener
+
+env <- add_resource(
+  env,
+  name = "CIS.screener",
+  capacity = create_schedule(cis.schedule),
+  queue_size = Inf
+)
+
+# repatriation/resettlement capacities
+
+
+#helper function
+repat_resettle_schedule <- function(sched.data.frame,nationality,protected){
+  if(!(protected %in% c("resettle","repat"))){
+    stop("Invalid value in repatriation/resettlement scheduler.")
+  }
+  w <- which(
+    sched.data.frame$nationality==nationality &
+    sched.data.frame$resettle.repatriate==protected
+  )
+  sdf <- sched.data.frame[w,]
+  sdf <- sdf[order(sdf$time),]
+  times <- sort(c((0:total.days)*24,(0:total.days)*24+small.epsilon))
+  v <- sapply(
+    times[seq(1,(length(times)-1),2)],
+    function(x){
+      w <- max(which(sdf$time <= x))
+      if(length(w)==0){
+        return(0)
+      } else {
+        s <- rtriang(
+          sdf$mode[w],
+          sdf$min[w],
+          sdf$max[w]
+        )
+        return(round(s))
+      }
+    }
+  )
+  values <- rep(0,length(times))
+  values[seq(1,(length(times)-1),2)] <- v
+  return(
+    schedule(
+      timetable = times,
+      values = values
+    )
+  )
+}
+
+for(nat in nationality.probs[1:2,1]){
+  for(protected in c("repat","resettle")){
+    env <- add_resource(
+      env,
+      name = paste(protected,nat,sep="-"),
+      capacity = repat_resettle_schedule(
+        move.outs,
+        nat,
+        protected
+      ),
+      queue_size = Inf
+    )
+  }
+}
+
+
+# Add global variables
+
+
+
+
+
+
+env <- simmer() %>% 
+  add_generator(
+    "dummy",
+    trajectory() %>%
+      renege_in(
+        3,
+        out = trajectory() %>%
+        release_all("horse") %>%
+        log_("I reneged")
+      ) %>%
+      seize("horse") %>%
+      renege_abort() %>%
+      timeout(2) %>%
+      release("horse") %>%
+      log_("Made it!"),
+    distribution = at(1:8)
+  ) %>%
+  add_resource("horse",queue_size=Inf) %>%
+  run()
 
 
 
