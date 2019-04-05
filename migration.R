@@ -24,11 +24,19 @@
 
 library(simmer)
 library(readxl)
-migrant.datafile <- "F:/Desktop/Rscripts/migration/migrant_inputs.xlsx"
-areas.datafile <- "F:/Desktop/Rscripts/migration/ship_info.xlsx"
-processing.datafile <- "F:/Desktop/Rscripts/migration/processing_inputs.xlsx"
+# migrant.datafile <- "F:/Desktop/Rscripts/migration/migrant_inputs.xlsx"
+# areas.datafile <- "F:/Desktop/Rscripts/migration/ship_info.xlsx"
+# processing.datafile <- "F:/Desktop/Rscripts/migration/processing_inputs.xlsx"
 # migrant.datafile <- "/home/cemarks/Projects/migration/migrant_inputs.xlsx"
 # areas.datafile <- "/home/cemarks/Projects/migration/ship_info.xlsx"
+# processing.datafile <- "/home/cemarks/Projects/migration/processing_inputs.xlsx"
+migrant.datafile <- "/Users/cemarks/Projects/migration/migrant_inputs.xlsx"
+areas.datafile <- "/Users/cemarks/Projects/migration/ship_info.xlsx"
+processing.datafile <- "/Users/cemarks/Projects/migration/processing_inputs.xlsx"
+
+
+
+
 #' # Models and Inputs 
 #' 
 #' This simulation consists of three layers:
@@ -715,7 +723,6 @@ ca.migrant.trajectory <- function(area.index){
 ca.boat.trajectory <- function(area.index,boat.type.index){
   journey.time <- pickup.areas$transit.time[area.index]
   boat.trajectory <- trajectory(paste("Boat",area.index,boat.type.index,sep="_")) %>%
-    timeout(boat.first.arrival) %>%
     seize(paste("area",area.index,sep="_")) %>%
     timeout(epsilon) %>%
     set_capacity(
@@ -1267,7 +1274,9 @@ processing_trajectory <- function(){
 
 
 #'
-#' # Processing
+#' # Simulation Process
+#' 
+#' ## Trajectories
 #' 
 #' In order to simulate the migration flow, the trajectories must be assembled
 #' into a simulation environment and resource schedulind must be applied.
@@ -1287,10 +1296,108 @@ area.trajectories <- lapply(
     )
 )
 names(area.trajectories) <- pickup.areas$pickup.area
-total.trajectories <- source_trajectories(area.trajectories)
+migrant.trajectories <- source_trajectories(area.trajectories)
+
+boat.trajectories <- list()
+count <- 0
+for(i in 1:nrow(pickup.areas)){
+  for(j in 1:nrow(ship.attributes)){
+    boat.type <- ship.attributes[j,1]
+    pickup.area <- pickup.areas[i,1]
+    w <- which(ship.allocation[,1]==pickup.area)
+    v <- ship.allocation[w,boat.type]
+    if(v > 0){
+      count <- count + 1
+      boat.trajectories[[count]] <- list(
+        trajectory = ca.boat.trajectory(i,j),
+        boat.count = v,
+        pickup.area = pickup.areas[i,1],
+        boat.type = ship.attributes[j,1]
+      )
+    }
+  }
+}
+
+#' ## Generator functions
+#' 
+#' The simulation requires an interarrival time distribution for each
+#' trajectory
 
 
+#' ### Migrant generator functions
+#' 
 
+migrant_function_generator <- function(mig.source){
+  d <- source.rates[which(source.rates$Source==ms),]
+  d <- d[order(d$Time),]
+  return(
+    function(){
+      time.now <- now(env)
+      w <- which(d$Time < time.now)
+      if(length(w) ==0){
+        p <- 1/100
+      } else {
+        p <- d$Rate[max(w)]
+      }
+      return(rexp(1,p))
+    }
+  )
+}
+
+#' ### Boat generator functions
+#' 
+#' Instead of using an interarrival distribution, we can set the
+#' times of the boats' arrivals using a uniform distribution across
+#' the first day.
+
+boat_first_arrivals <- function(boat.count){
+  return(runif(boat.count,1,24))
+}
+
+#' ## Resource schedules
+#' 
+#' The resource schedules can be built into the simulation environment
+#' on the fly.
+#' 
+#' 
+#' ## Build the simulation environment
+#' 
+#' 
+
+# Initialize!
+env <- simmer()
+
+
+# Add migrant generators
+for(i in 1:length(migrant.sources$Source)){
+  env <- add_generator(
+    env,
+    name_prefix = paste(migrant.sources$Source[i],"migrant",sep="-"),
+    trajectory = migrant.trajectories[[migrant.sources$Source[i]]],
+    distribution = migrant_function_generator(migrant.sources$Source[i])
+    )
+}
+
+# Add boat generators
+for(i in 1:length(boat.trajectories)){
+  env <- add_generator(
+    env,
+    name_prefix = paste(
+      boat.trajectories[[i]][["pickup.area"]],
+      boat.trajectories[[i]][["boat.type"]],
+      sep="_"
+    ),
+    trajectory = boat.trajectories[[i]][['trajectory']],
+    distribution = at(
+      boat_first_arrivals(
+        boat.trajectories[[i]][["boat.count"]]
+      )
+    )
+  )
+}
+
+
+# Add resources
 
 
 
