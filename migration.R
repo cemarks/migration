@@ -1241,6 +1241,7 @@ processing_trajectory <- function(){
     seize(
       "transit-to-windward"
     ) %>%
+    log_("Getting on ferry") %>%
     set_global(
       keys = "windward_transit_queue",
       values = -1,
@@ -1410,32 +1411,6 @@ migrant_function_generator <- function(mig.source){
     }
   )
 }
-
-
-migrant_function_generator <- function(mig.source){
-  d <- source.rates[which(source.rates$source==mig.source),]
-  d <- d[order(d$time),]
-  return(
-    function(){
-      time.now <- 5
-      w <- which(d$time <= time.now)
-      if(length(w) == 0){
-        p <- 1/100
-      } else {
-        p <- d$rate[max(w)]
-      }
-      if(p<=0){
-        return(-1)
-      } else {
-        return(rexp(1,p))
-      }
-    }
-  )
-}
-
-
-
-
 
 
 
