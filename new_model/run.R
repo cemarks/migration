@@ -1,20 +1,38 @@
 library(simmer)
+
+
+# Set Directory #
+
 model_dir = "/home/cemarks/Projects/migration/new_model"
+
+# Import Model #
+
 source(paste(model_dir,"migrant_model.R",sep="/"))
 
-# Data input
-# Input files #
+# Data input #
+
+## Set Input files ##
 
 migrant.datafile <- "/home/cemarks/Projects/migration/new_model/migrant_inputs.xlsx"
 areas.datafile <- "/home/cemarks/Projects/migration/new_model/ship_info.xlsx"
 processing.datafile <- "/home/cemarks/Projects/migration/new_model/processing_inputs.xlsx"
+
+## Source Data File ##
+
 source(paste(model_dir,"migrant_data_input.R",sep="/"))
 
-# Model build (produces "env",total.days)
+# Build model with data (produces "env",total.days) #
+
+## Set Build Parameters ##
+
+total.days <- 365*2
+
+## Source Build Script ##
+
 source(paste(model_dir,"migrant_model_build.R",sep="/"))
 
 
-# Run and analyze
+# Run and analyze #
 
 env %>% run(
   until <- total.days*24

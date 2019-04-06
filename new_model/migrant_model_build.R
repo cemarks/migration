@@ -1,8 +1,5 @@
 library(simmer)
 
-# Set Build Parameters #
-
-total.days <- 365*2
 
 # Build Trajectories #
 
