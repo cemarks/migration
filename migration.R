@@ -24,12 +24,12 @@
 
 library(simmer)
 library(readxl)
-migrant.datafile <- "F:/Desktop/Rscripts/migration/migrant_inputs.xlsx"
-areas.datafile <- "F:/Desktop/Rscripts/migration/ship_info.xlsx"
-processing.datafile <- "F:/Desktop/Rscripts/migration/processing_inputs.xlsx"
-# migrant.datafile <- "/home/cemarks/Projects/migration/migrant_inputs.xlsx"
-# areas.datafile <- "/home/cemarks/Projects/migration/ship_info.xlsx"
-# processing.datafile <- "/home/cemarks/Projects/migration/processing_inputs.xlsx"
+# migrant.datafile <- "F:/Desktop/Rscripts/migration/migrant_inputs.xlsx"
+# areas.datafile <- "F:/Desktop/Rscripts/migration/ship_info.xlsx"
+# processing.datafile <- "F:/Desktop/Rscripts/migration/processing_inputs.xlsx"
+migrant.datafile <- "/home/cemarks/Projects/migration/migrant_inputs.xlsx"
+areas.datafile <- "/home/cemarks/Projects/migration/ship_info.xlsx"
+processing.datafile <- "/home/cemarks/Projects/migration/processing_inputs.xlsx"
 # migrant.datafile <- "/Users/cemarks/Projects/migration/migrant_inputs.xlsx"
 # areas.datafile <- "/Users/cemarks/Projects/migration/ship_info.xlsx"
 # processing.datafile <- "/Users/cemarks/Projects/migration/processing_inputs.xlsx"
