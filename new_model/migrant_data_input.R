@@ -4,12 +4,6 @@ library(readxl)
 
 
 
-# Input files #
-
-migrant.datafile <- "/home/cemarks/Projects/migration/migrant_inputs.xlsx"
-areas.datafile <- "/home/cemarks/Projects/migration/ship_info.xlsx"
-processing.datafile <- "/home/cemarks/Projects/migration/processing_inputs.xlsx"
-
 ## Input helper functions & Parameters ##
 
 ### check table function ###
