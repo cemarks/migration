@@ -264,7 +264,7 @@ source_trajectories <- function(area.trajectory.list){
   for(i in 1:length(mig.sources)){
     mig.source <- mig.sources[i]
     p <- pickup.areas[,mig.source]
-    output[[mig.source]] <- trajectory() %>%
+    output[[mig.source]] <- trajectory(name=mig.source) %>%
       set_attribute(
         keys = c(
           "family.status",
@@ -452,7 +452,7 @@ ca_boat_trajectory <- function(area.index,boat.type.index){
     release_all("berth") %>%
     timeout(ship.attributes$recovery.time[boat.type.index]) %>%
     timeout(journey.time) %>%
-    rollback(21)
+    rollback(20)
   return(boat.trajectory)
 }
 
