@@ -1,5 +1,6 @@
 library(simmer)
 
+set.seed(12345)
 
 # Set Directory #
 
@@ -13,9 +14,9 @@ source(paste(model_dir,"migrant_model.R",sep="/"))
 
 ## Set Input files ##
 
-migrant.datafile <- "/home/cemarks/Projects/migration/new_model/migrant_inputs.xlsx"
-areas.datafile <- "/home/cemarks/Projects/migration/new_model/ship_info.xlsx"
-processing.datafile <- "/home/cemarks/Projects/migration/new_model/processing_inputs.xlsx"
+migrant.datafile <- paste(model_dir,"migrant_inputs_sample.xlsx",sep="/")
+areas.datafile <- paste(model_dir,"ship_info_sample.xlsx",sep="/")
+processing.datafile <- paste(model_dir,"processing_inputs_sample.xlsx",sep="/")
 
 ## Source Data File ##
 
@@ -26,6 +27,7 @@ source(paste(model_dir,"migrant_data_input.R",sep="/"))
 ## Set Build Parameters ##
 
 total.days <- 365*2
+repat.at.sea.prob <- 0.01
 
 ## Source Build Script ##
 
@@ -38,7 +40,5 @@ env %>% run(
   until <- total.days*24
 )
 
-g <- get_mon_attributes(env)
-w <- which(g$key=="windward_transit_queue")
-plot(g$time[w],g$value[w],type = "l",xlab = "Hours",ylab="Queue Length",main="Windward Transit Queue")
+
 

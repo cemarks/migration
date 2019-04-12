@@ -6,13 +6,8 @@ library(simmer)
 processing.trajectory <- processing_trajectory()
 area.trajectories <- lapply(
   1:nrow(pickup.areas),
-  function(x)
-    return(
-      join(
-        ca_migrant_trajectory(x),
-        processing.trajectory
-      )
-    )
+  ca_migrant_trajectory,
+  follow.on.trajectory = processing.trajectory
 )
 names(area.trajectories) <- pickup.areas$pickup.area
 migrant.trajectories <- source_trajectories(area.trajectories)
@@ -38,6 +33,7 @@ for(i in 1:nrow(pickup.areas)){
 }
 
 ferry.trajectory <- ferry_trajectory(proc.params)
+
 
 # Build environment
 
@@ -142,9 +138,80 @@ env <- add_resource(
   queue_size = Inf
 )
 
+
+#### COUNTER RESOURCES  #### added to provide migrant counts
+
+# repat_afloat
+
+env <- add_resource(
+  env,
+  name = "repat_afloat",
+  capacity = Inf,
+  queue_size = Inf
+)
+
+env <- add_resource(
+  env,
+  name = "afloat.counter",
+  capacity = Inf,
+  queue_size = Inf
+)
+
+env <- add_resource(
+  env,
+  name = "nsgb.counter",
+  capacity = Inf,
+  queue_size = Inf
+)
+
+env <- add_resource(
+  env,
+  name = "usa.counter",
+  capacity = Inf,
+  queue_size = Inf
+)
+
+env <- add_resource(
+  env,
+  name = "security.counter",
+  capacity = Inf,
+  queue_size = Inf
+)
+
+env <- add_resource(
+  env,
+  name="inprocessed.counter",
+  capacity=Inf,
+  queue_size = Inf
+)
+
+env <- add_resource(
+  env,
+  name="wait.ferry.to.leeward",
+  capacity=Inf,
+  queue_size = Inf
+)
+
+env <- add_resource(
+  env,
+  name="repat.security",
+  capacity = Inf,
+  queue_size = Inf
+)
+
+env <- add_resource(
+  env,
+  name = "wait.ferry.to.windward",
+  capacity = Inf,
+  queue_size = Inf
+)
+
+
+# add capacity = 1 
+
 # Repatriation/resettlement servers
 
-for(nat in nationality.probs[1:2,1]){
+for(nat in nationality.probs[,1]){
   for(protected in c("repat","resettle")){
     env <- add_resource(
       env,
@@ -188,10 +255,12 @@ for(i in 1:nrow(pickup.areas)){
     )
 }
 
-# Analysis globals
+
+#### GLOBALS for ANALYSIS  #####
+# ICE Counter
+
 env <- add_global(
   env,
-  key = "windward_transit_queue",
-  value = 0
+  key = "ICE.counter",
+  value=0
 )
-

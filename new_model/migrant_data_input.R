@@ -86,6 +86,8 @@ source.rates <- check_table(
     "rate"
   )
 )
+# Convert rate to per hour
+source.rates$rate <- source.rates$rate/24
 
 ## family status ##
 family.status.probs <- check_table(

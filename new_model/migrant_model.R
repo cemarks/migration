@@ -54,8 +54,15 @@ triangle_quantile <- function(r,t.mode,t.min,t.max){
 }
 
 rtriang <- function(t.mode,t.min,t.max){
-  r <- runif(1)
-  return(triangle_quantile(r,t.mode,t.min,t.max))
+  if((t.min > t.max) || (t.min > t.mode) || (t.mode > t.max)){
+    stop("Triangle distribution parameters incorrect ordering")
+  }
+  if((t.min == t.mode) && (t.mode == t.max)){
+    return(t.mode)
+  } else {
+    r <- runif(1)
+    return(triangle_quantile(r,t.mode,t.min,t.max))
+  }
 }
 
 ## Migrant attribute generator functions ##
@@ -81,7 +88,7 @@ prob_generator <- function(input.table,mig.source){
 security_risk_prob_generator <- function(family.status.value,mig.source){
   p <- security.risk.probs[family.status.value,mig.source]
   r <- runif(1)
-  if(r <= 0){
+  if(r <= p){
     return(1) # Security Risk
   } else {
     return(2)
@@ -108,6 +115,7 @@ migrant_attributes <- function(mig.source){
     )
   )
 }
+
 
 ## Migrant Arrival Generator ##
 
@@ -260,10 +268,33 @@ source_trajectories <- function(area.trajectory.list){
   if(!all(as.character(migrant.sources$Source) %in% as.character(mig.sources))){
     warning("Pickup data does not contain columns for all sources.")
   }
+  names(atl) <- NULL
   output <- list()
+  pgen <- function(m){
+    p <- pickup.areas[,m]
+    f <- function(){
+      route <- prob_generator_int(p)
+      return(route)
+    }
+    return(f)
+  }
+  agen <- function(m){
+    m.source <- m
+    f <- function(){
+      return(
+        as.numeric(
+          migrant_attributes(
+            m.source
+          )
+        )
+      )
+    }
+    return(f)
+  }
   for(i in 1:length(mig.sources)){
     mig.source <- mig.sources[i]
-    p <- pickup.areas[,mig.source]
+    f <- pgen(mig.source)
+    g <- agen(mig.source)
     output[[mig.source]] <- trajectory(name=mig.source) %>%
       set_attribute(
         keys = c(
@@ -273,17 +304,10 @@ source_trajectories <- function(area.trajectory.list){
           "security.risk",
           "protected"
         ),
-        values = as.numeric(
-          migrant_attributes(
-            mig.source
-          )
-        )
+        values = g
       ) %>%
       branch(
-        option = function(){
-          route = prob_generator_int(p)
-          return(route)
-        },
+        option = f,
         continue = FALSE,
         atl
       )
@@ -293,24 +317,39 @@ source_trajectories <- function(area.trajectory.list){
 
 ## Pick-up area migrant trajectory generator ##
 
-ca_migrant_trajectory <- function(area.index){
+ca_migrant_trajectory <- function(area.index,follow.on.trajectory = trajectory()){
   journey.time <- pickup.areas$transit.time[area.index]
   timeout.action <- pickup.areas$timeout.action[area.index]
   if(timeout.action == 'depart'){
-    out.trajectory <- trajectory()
+    out.trajectory <- trajectory() %>%
+    seize("usa.counter",1) %>%                                                           # add USA counter
+    release("usa.counter",1) 
   } else {
     w <- which(pickup.areas[,1]==timeout.action)
     # The following line could result in an infinite loop
     # Add check that there is no circular logic in migrant flow.
-    out.trajectory <- ca_migrant_trajectory(w)
+    out.trajectory <- ca_migrant_trajectory(w,follow.on.trajectory)
   } 
   area.migrant <- trajectory(paste("Migrant",area.index,sep="_")) %>%
+    set_attribute(keys = "area.journey.time", values=journey.time) %>%
     renege_in(
-      t = pickup.areas$migrant.timeout[area.index],
+      t = pickup.areas$migrant.timeout[area.index],                                      # add branches here? depart = count
       out = out.trajectory
     ) %>%
     seize(paste("boat.area",area.index,sep="_")) %>%
     renege_abort() %>% 
+    branch(
+      option = function(){
+        s <- sample(c(0,1),1,prob = c(1-repat.at.sea.prob,repat.at.sea.prob))
+      },
+      continue = FALSE,
+      trajectory() %>%
+        release(paste("boat.area",area.index,sep="_")) %>%
+        seize("repat_afloat",1) %>%                                                     # repat afloat counter
+        release("repat_afloat", 1)   ## 
+    ) %>%
+    seize("afloat.counter") %>%                                                         # afloat.counter
+   # release("afloat.counter") %>%
     set_global(
       keys = paste("boat.count",area.index,sep="_"),
       values = 1,
@@ -344,7 +383,8 @@ ca_migrant_trajectory <- function(area.index){
             delay = function(){
               boat.type <- get_global(env,paste("boat.type",area.index,sep="_"))
               t.1 <- ship.attributes$occupied.time[boat.type]
-              return(max(0,t.1 - journey.time))
+              jt <- get_attribute(env,"area.journey.time")
+              return(max(0,t.1 - jt))
             }
           ),
         "2" = set_global(
@@ -357,7 +397,8 @@ ca_migrant_trajectory <- function(area.index){
             delay = function(){
               boat.type <- get_global(env,paste("boat.type",area.index,sep="_"))
               t.n <- ship.attributes$sat.time[boat.type]
-              return(max(t.n - journey.time,0))
+              jt <- get_attribute(env,"area.journey.time")
+              return(max(t.n - jt,0))
             }
           ),
         "3" = set_global(
@@ -382,8 +423,10 @@ ca_migrant_trajectory <- function(area.index){
         )
       }
     )%>%
-    wait()
-  return(area.migrant)
+    wait() %>%
+    release("afloat.counter")                                          # release afloat counter
+
+  return(join(area.migrant,follow.on.trajectory))
 }
 
 ## Pickup area boat trajectory generator ##
@@ -427,13 +470,15 @@ ca_boat_trajectory <- function(area.index,boat.type.index){
       mod = "+"
     ) %>%
     timeout(epsilon) %>%
-    release(paste("area",area.index,sep="_")) %>%
     send(paste("boat.departed",area.index,sep="_")) %>%
+    timeout(small.epsilon) %>%
     untrap(paste("boat.depart",area.index.sep="_")) %>% 
     set_global(
       paste("boat.count",area.index,sep="_"),
       0
     ) %>%
+    timeout(small.epsilon) %>% 
+    release(paste("area",area.index,sep="_")) %>%
     timeout(journey.time) %>%
     set_attribute(
       keys = "debark.signal",
@@ -452,7 +497,7 @@ ca_boat_trajectory <- function(area.index,boat.type.index){
     release_all("berth") %>%
     timeout(ship.attributes$recovery.time[boat.type.index]) %>%
     timeout(journey.time) %>%
-    rollback(20)
+    rollback(22)
   return(boat.trajectory)
 }
 
@@ -509,12 +554,16 @@ processing_trajectory <- function(){
           timeout(
             function() return(runif(1,0.25,23.99))
           )%>%
-          release(paste(protected,n,sep="-"))
+          release("nsgb.counter") %>%                          # release NSGB counter upon repat-resettle
+          release(paste(protected,n,sep="-")) 
       )
     }
   }
   welcome.to.GTMO <- trajectory(name = "GTMO") %>%
-      seize(
+    seize("nsgb.counter") %>%                                  # initiate NSGB counter
+    seize("wait.ferry.to.leeward")%>%                          # initiate leeward dock counter
+    release("wait.ferry.to.leeward") %>%                       # counter for dock waiting time
+    seize(
         "transit-to-leeward"
       ) %>%
     timeout(2*small.epsilon) %>%
@@ -528,14 +577,18 @@ processing_trajectory <- function(){
     # Initial health separation
     branch(
       option = function(){
-        health <- get_attribute(env,"health")
-        if(health == "Disease"){
+        variable <- "health"
+        key <- "Disease"
+        df <- health.probs
+        value <- get_attribute(env,variable)
+        key.index <- which(df[,1]==key)
+        if(value == key.index){
           return(1)
         } else {
           return(0)
         }
       },
-      continue = TRUE, #This guy jumps right back in line once he feels better
+      continue = TRUE,                                       #This guy jumps right back in line once he feels better
       trajectory(name="Sick")  %>%
         timeout(
           function(){
@@ -552,6 +605,7 @@ processing_trajectory <- function(){
         )
     ) %>%
     seize("ICE.agent") %>%
+    #set_global(keys = "ICE.counter",values=1,mod="+") %>%                                # not needed. 
     timeout(
       function(){
         time.now <- now(env)
@@ -566,18 +620,10 @@ processing_trajectory <- function(){
       }
     ) %>%
     release("ICE.agent") %>%
-    set_global(
-      keys="windward_transit_queue",
-      values = 1,
-      mod = "+"
-    ) %>%
+    seize("wait.ferry.to.windward") %>%
+    release("wait.ferry.to.windward") %>%
     seize(
       "transit-to-windward"
-    ) %>%
-    set_global(
-      keys = "windward_transit_queue",
-      values = -1,
-      mod = "+"
     ) %>%
     timeout(2*small.epsilon) %>%
     release("transit-to-windward") %>%
@@ -587,17 +633,23 @@ processing_trajectory <- function(){
         return(proc.params$Value[w])
       }
     ) %>%
+    #seize("inprocessed.counter") %>%                      # not needed
+    #release("inprocessed.counter") %>%
     branch(
       option = function() {
-        security.risk <- get_attribute(env,"security.risk")
-        if(security.risk == "Security Risk"){
+        variable <- "security.risk"
+        # key <- "Security Risk"                          # Not needed because security risk table is formatted differently.
+        value <- get_attribute(env,variable)
+        key.index <- 1                                     # Need this because security risks are handled differently.
+        if(value == key.index){
           return(1)
         } else {
           return(0)
         }
       },
-      continue = FALSE,
+      continue = FALSE,                                  # security folks timeout and do not use the migrant repat/resettle path
       trajectory(name="security.risk") %>%
+        seize("security.counter") %>%
         timeout(
           function(){
             time.now <- now(env)
@@ -610,7 +662,11 @@ processing_trajectory <- function(){
               )
             )
           }
-        )
+        ) %>%
+      release("security.counter") %>%
+      seize("repat.security") %>%                       #counter for departure of security holds. destination: off nsgb
+      release("repat.security") %>%
+      release("nsgb.counter")                           # security folks timeout and do not use the migrant repat/resettle path
     ) %>%
     seize("CIS.screener") %>%
     timeout(
