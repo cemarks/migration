@@ -1,10 +1,10 @@
 library(simmer)
 
-set.seed(12345)
+set.seed(123456)
 
 # Set Directory #
 
-model_dir = "/home/cemarks/Projects/migration/new_model"
+model_dir = "F:/Desktop/new_model"
 
 # Import Model #
 
@@ -14,9 +14,9 @@ source(paste(model_dir,"migrant_model.R",sep="/"))
 
 ## Set Input files ##
 
-migrant.datafile <- paste(model_dir,"migrant_inputs_sample.xlsx",sep="/")
-areas.datafile <- paste(model_dir,"ship_info_sample.xlsx",sep="/")
-processing.datafile <- paste(model_dir,"processing_inputs_sample.xlsx",sep="/")
+migrant.datafile <- paste(model_dir,"migrant_inputs.xlsx",sep="/")
+areas.datafile <- paste(model_dir,"ship_info.xlsx",sep="/")
+processing.datafile <- paste(model_dir,"processing_inputs.xlsx",sep="/")
 
 ## Source Data File ##
 
