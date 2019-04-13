@@ -4,7 +4,7 @@ set.seed(123456)
 
 # Set Directory #
 
-model_dir = "F:/Desktop/new_model"
+model_dir = "C:/Users/christopher.e.marks/My Documents/new_model"
 
 # Import Model #
 

@@ -227,6 +227,19 @@ for(nat in nationality.probs[,1]){
   }
 }
 
+for(fs in family.status.probs[,1]){
+  env <- add_resource(
+    env,
+    name = paste(
+      "Inprocessing",
+      fs,
+      sep = "_"
+    ),
+    capacity = Inf,
+    queue_size = Inf
+  )
+}
+
 ## Add globals ##
 
 # Control globals

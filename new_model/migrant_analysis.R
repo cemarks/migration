@@ -27,6 +27,8 @@ arrival.count <- nrow(get_mon_arrivals(env))
 
 arrivals2 <- get_mon_arrivals(env,per_resource = T)   ## per resource data view
 
+rm(env)
+
 arrivals2$wait_time <- arrivals2$end_time - arrivals2$start_time                                  ## total resource times
 arrivals2$start_day <- ceiling(arrivals2$start_time/24)                                           ## add start day of event
 arrivals2$end_day <- ceiling(arrivals2$end_time/24)                                               ## add end day of event
@@ -130,6 +132,7 @@ g1 <- ggplot(data=df.agg2,
   scale_color_manual(name="Location", labels = c("Afloat", "at NSGB"), values = c("blue", "green")) 
   
 print(g1)
+rm(df.agg,df.agg2,afloat.df,GTMO.df,resource.df,resource.df.melt,g1)
       
 #+ echo = FALSE, fig.width=7, fig.height=5
 # compute dataframe that shows the end of day totals for Cuba or Haiti both Afloat and GTMO
@@ -228,12 +231,16 @@ repat.all.melt <- melt(
   measure.vars = grep("day.",names(repat.all),fixed = TRUE,value = TRUE)
 )
 
+rm(repat.all)
 df <- repat.all.melt[which(grepl("end.day",repat.all.melt$variable)),]
+rm(repat.all.melt)
+
 df.agg <- aggregate(
   formula(value ~ variable + resource),
   data = df,
   FUN = sum
 )
+rm(df)
 
 g2 <- ggplot(
   data = df.agg,
@@ -246,7 +253,7 @@ g2 <- ggplot(
   scale_fill_discrete(name="Activity")
 print(g2)
 
-
+rm(df.agg,g2)
 
 #' # Daily Resettlement Counts: .
 #' This plot shows the total number of NSGB migrants resettled in the 24-hour period. Resettled 
@@ -278,16 +285,18 @@ for(day in 1:max.day){
 # reshape from wide to long format
 reset.all.melt <- melt(
   reset.all,
-  measure.vars = grep("day.",names(reset.all.melt),fixed = TRUE,value = TRUE)
+  measure.vars = grep("day.",names(reset.all),fixed = TRUE,value = TRUE)
 )
 
 
 df <- reset.all.melt[which(grepl("end.day",reset.all.melt$variable)),]
+rm(reset.all.melt)
 df.agg <- aggregate(
   formula(value ~ variable + resource),
   data = df,
   FUN = sum
 )
+rm(df)
 
 g3 <- ggplot(
   data = df.agg,
@@ -299,7 +308,7 @@ g3 <- ggplot(
   scale_fill_discrete(name="Activity")
 print(g3)
 
-
+rm(df.agg,g3)
 
 #' # Daily Interdiction Counts: .
 #' This plot shows the total number of migrants interdicted in the 24-hour period. This count includes
@@ -337,15 +346,17 @@ interdictions.all.melt <- melt(
   interdictions.all,
   measure.vars = grep("day.",names(interdictions.all),fixed = TRUE,value = TRUE)
 )
-
+rm(interdictions.all)
 
 df <- interdictions.all.melt[which(grepl("start.day",interdictions.all.melt$variable)),]
+rm(interdictions.all.melt)
+
 df.agg <- aggregate(
   formula(value ~ variable + resource),
   data = df,
   FUN = sum
 )
-
+rm(df)
 
 g4 <- ggplot(
   data = df.agg,
@@ -356,7 +367,7 @@ g4 <- ggplot(
   ylim(0,100) +
   scale_fill_discrete(name="Activity")
 print(g4)
-
+rm(df.agg,g4)
 
 #' # Afloat-time Analysis: 
 #' This plot conveys the waiting times for migrants afloat.  It shows the number of migrants
@@ -383,6 +394,8 @@ g5 <- ggplot(
   labs(title="Afloat Waiting Times ", x="Time Waiting", y="number of migrants") +
   scale_fill_discrete(name="Departure Source")
 print(g5)
+
+rm(g5)
 
 #' ## Mean and MAX Waiting over Time
 #' The following pair of plots depict both the Maximum and the Average time afloat for migrants
@@ -427,7 +440,7 @@ g7 <- ggplot(
 require(gridExtra)
 grid.arrange(g6,g7)
 
-
+rm(a.mean,g6,g7,a.max)
 
 #### DAILY NSGB POPULATIONS BY CATEGORY: NATIONALITY AND SECURITY.  END OF DAY QUEUE COUNTS   ####
 repat.haiti.df <- arrivals2[which(arrivals2$resource=="repat-Haitian"),]
@@ -436,7 +449,7 @@ resettle.haiti.df <- arrivals2[which(arrivals2$resource=="resettle-Haitian"),]
 for(day in 1:max.day){
   midnight <- day*24
   repat.haiti.df <- cbind(
-    repat.df,
+    repat.haiti.df,
     as.numeric(
       repat.haiti.df$end_time > midnight & repat.haiti.df$start_time <= midnight
     )
@@ -455,15 +468,15 @@ depart.haiti.df <- rbind(repat.haiti.df,resettle.haiti.df)
 
 depart.haiti.df.melt <- melt(
   depart.haiti.df,
-  measure.vars = grep("day.",names(resource.df),fixed = TRUE,value = TRUE)
+  measure.vars = grep("day.",names(depart.haiti.df),fixed = TRUE,value = TRUE)
 )
-
+rm(depart.haiti.df)
 df.agg3 <- aggregate(
   formula(value ~ variable + resource),
   data = depart.haiti.df.melt,
   FUN = sum
 )
-
+rm(depart.haiti.df.melt)
 
 # Plot Haitians
 g8 <- ggplot(data=df.agg3,
@@ -479,7 +492,7 @@ g8 <- ggplot(data=df.agg3,
   scale_color_manual(name="Location")  +
   facet_grid(resource~.)
 print(g8)
-
+rm(df.agg3,g8)
 
 
 ### CUBA CAMP POPULATION:
@@ -505,17 +518,19 @@ for(day in 1:max.day){
 }
 
 depart.cuba.df <- rbind(repat.cuba.df,resettle.cuba.df)
-
+rm(repat.cuba.df,resettle.cuba.df)
 depart.cuba.df.melt <- melt(
   depart.cuba.df,
-  measure.vars = grep("day.",names(resource.df),fixed = TRUE,value = TRUE)
+  measure.vars = grep("day.",names(depart.cuba.df),fixed = TRUE,value = TRUE)
 )
+rm(depart.cuba.df)
 
 df.agg4 <- aggregate(
   formula(value ~ variable + resource),
   data = depart.cuba.df.melt,
   FUN = sum
 )
+rm(depart.cuba.df.melt)
 
 ## Plot Cubans
 g9 <- ggplot(data=df.agg4,
@@ -532,7 +547,7 @@ g9 <- ggplot(data=df.agg4,
   facet_grid(resource~.) 
 print(g9)
 
-
+rm(df.agg4,g9)
 
 ### OTHER CAMP POPULATION:
 repat.other.df <- arrivals2[which(arrivals2$resource=="repat-Other"),]
@@ -557,17 +572,20 @@ for(day in 1:max.day){
 }
 
 depart.other.df <- rbind(repat.other.df,resettle.other.df)
+rm(repat.other.df,resettle.other.df)
 
 depart.other.df.melt <- melt(
   depart.other.df,
-  measure.vars = grep("day.",names(resource.df),fixed = TRUE,value = TRUE)
+  measure.vars = grep("day.",names(depart.other.df),fixed = TRUE,value = TRUE)
 )
+rm(depart.other.df)
 
 df.agg5 <- aggregate(
   formula(value ~ variable + resource),
   data = depart.other.df.melt,
   FUN = sum
 )
+rm(depart.other.df.melt)
 
 # Plot Others
 g10 <- ggplot(data=df.agg5,
@@ -584,7 +602,7 @@ g10 <- ggplot(data=df.agg5,
   scale_color_manual(name="Location") + #, labels = c("Afloat", "at NSGB"), values = c("blue", "green")) 
   facet_grid(resource~.)
 print(g10)
-
+rm(df.agg5,g10)
 
 
 ### Security Camp
@@ -607,14 +625,18 @@ for(day in 1:max.day){
 
 sec.camp.df.melt <- melt(
   sec.camp.df,
-  measure.vars = grep("day.",names(resource.df),fixed = TRUE,value = TRUE)
+  measure.vars = grep("day.",names(sec.camp.df),fixed = TRUE,value = TRUE)
 )
+
+rm(sec.camp.df)
 
 df.agg6 <- aggregate(
   formula(value ~ variable + resource),
   data = sec.camp.df.melt,
   FUN = sum
 )
+
+rm(sec.camp.df.melt)
 
 # Plot Others
 g11<- ggplot(data=df.agg6,
@@ -632,6 +654,7 @@ g11<- ggplot(data=df.agg6,
   facet_grid(resource~.)
 print(g11)
 
+rm(df.agg6,g11)
 
 
 

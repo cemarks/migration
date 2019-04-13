@@ -543,6 +543,27 @@ ferry_trajectory <- function(proc.params){
 
 ## Processing Center Migrant Trajectory Generator ##
 
+### Family status counter sub-trajectory ###
+
+family_status_counter_trajectory <- function(
+  family.status.int,
+  queue.name,
+  queue.resource = NULL
+){
+  if(is.null(queue.resource)){
+    traj <- trajectory() %>%
+	  seize(paste(queue.name,family.status.probs[family.status.int,1],sep="_")) %>%
+	  release(paste(queue.name,family.status.probs[family.status.int,1],sep="_"))
+  } else {
+    traj <- trajectory() %>%
+	  seize(paste(queue.name,family.status.probs[family.status.int,1],sep="_")) %>%
+        seize(queue.resource) %>%
+	  release(paste(queue.name,family.status.probs[family.status.int,1],sep="_"))
+  }
+  return(traj)
+}
+
+
 processing_trajectory <- function(){
   repat.trajectory.list <- list()
   for(n in nationality.probs[,1]){
@@ -558,6 +579,17 @@ processing_trajectory <- function(){
           release(paste(protected,n,sep="-")) 
       )
     }
+  }
+  inprocess.trajectory.list <- list()
+  for(i in 1:length(family.status.probs[,1])){
+    inprocess.trajectory.list <- append(
+      inprocess.trajectory.list,
+      family_status_counter_trajectory(
+        i,
+        "Inprocessing",
+        "ICE.agent"
+      )
+    )
   }
   welcome.to.GTMO <- trajectory(name = "GTMO") %>%
     seize("nsgb.counter") %>%                                  # initiate NSGB counter
@@ -603,9 +635,15 @@ processing_trajectory <- function(){
             )
           }
         )
+    ) %>% 
+    branch(
+	option = function(){
+	  fs <- get_attribute(env,"family.status")
+	  return(fs)
+ 	},
+	continue = TRUE,
+      inprocess.trajectory.list
     ) %>%
-    seize("ICE.agent") %>%
-    #set_global(keys = "ICE.counter",values=1,mod="+") %>%                                # not needed. 
     timeout(
       function(){
         time.now <- now(env)

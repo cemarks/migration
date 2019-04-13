@@ -1,0 +1,26 @@
+
+
+1. Develop capability to view queue sizes at each major processing point, by component.
+--Build branches in the model, splitting migrant flows by demographics to seize demographic-specific resources and then continue on the trajectory.
+--Write scripts to extract and visualize these queues.
+
+2. Make the code more efficient (export to sqlite??)
+--Develop data model/schema
+--Wrapper for pushing/pulling data into db
+
+3. DoE
+--Decide on input space for exploration and outputs for modeling.
+--Execute the runs and collect the data.
+--Fit predictive models based on the results.
+--Create useful model approximation in Excel that employs the predictive model.
+--Develop methodology/SOP for maintenance of the Excel model over time.
+
+4. Use multiple runs to examine variation in results.
+
+5. Sensitivity analysis for select inputs.
+
+6. Update ferry model to increase flexibility: multiple types of ferries.
+
+7. Update BLUFOR in-flow model and how it interacts with the migrant processing.
+
+8. More ferry transits?
