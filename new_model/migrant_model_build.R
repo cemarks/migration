@@ -237,7 +237,30 @@ for(fs in family.status.probs[,1]){
     ),
     capacity = Inf,
     queue_size = Inf
+  ) %>%
+  add_resource(
+    name = paste(
+      "CIS",
+      fs,
+      sep = "_"
+    ),
+    capacity = Inf,
+    queue_size = Inf
   )
+  for(n in nationality.probs[,1]){
+    for(protected in c("repat","resettle")){
+      env <- add_resource(
+        env,
+        name = paste(
+          paste(protected,n,sep="-"),
+          fs,
+          sep = "_"
+        ),
+        capacity = Inf,
+        queue_size = Inf
+      )
+    }
+  }
 }
 
 ## Add globals ##
@@ -269,11 +292,3 @@ for(i in 1:nrow(pickup.areas)){
 }
 
 
-#### GLOBALS for ANALYSIS  #####
-# ICE Counter
-
-env <- add_global(
-  env,
-  key = "ICE.counter",
-  value=0
-)

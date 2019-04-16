@@ -349,7 +349,6 @@ ca_migrant_trajectory <- function(area.index,follow.on.trajectory = trajectory()
         release("repat_afloat", 1)   ## 
     ) %>%
     seize("afloat.counter") %>%                                                         # afloat.counter
-   # release("afloat.counter") %>%
     set_global(
       keys = paste("boat.count",area.index,sep="_"),
       values = 1,
@@ -526,18 +525,30 @@ ferry_trajectory <- function(proc.params){
     timeout(small.epsilon) %>%
     set_capacity("transit-to-windward",-ferry.capacity,mod="+") %>%
     timeout(ferry.transit.time) %>% 
-    timeout(
-      function(){
+    branch(
+      option = function(){
         time.now <- now(env)
         start.time <- get_attribute(env,"start.time")
         if(time.now + ferry.transit.time + ferry.reset - start.time > ferry.service.hours){
-          return(start.time + 24 - time.now)
+          return(1)
         } else {
-          return(ferry.reset)
+          return(2)
         }
-      }
+      },
+      continue = TRUE,
+      trajectory() %>%
+        timeout(
+          function(){
+            start.time <- get_attribute(env,"start.time")
+            time.now <- now(env)
+            return(start.time + 24 - time.now)
+          }
+        ) %>%
+        set_attribute(keys = "start.time",values = function() return(now(env))),
+      trajectory() %>%
+        timeout(ferry.reset)
     ) %>%
-    rollback(10)
+    rollback(9)
   return(ferry.trajectory)
 }
 
@@ -568,10 +579,28 @@ processing_trajectory <- function(){
   repat.trajectory.list <- list()
   for(n in nationality.probs[,1]){
     for(protected in c("repat","resettle")){
+      family.trajectory.list <- list()
+      for(i in 1:length(family.status.probs[,1])){
+        family.trajectory.list <- append(
+          family.trajectory.list,
+          family_status_counter_trajectory(
+            i,
+            paste(protected,n,sep="-"),
+            paste(protected,n,sep="-")
+          )
+        )
+      }
       repat.trajectory.list <- append(
         repat.trajectory.list,
         trajectory() %>%
-          seize(paste(protected,n,sep="-")) %>%
+          branch(
+            option = function(){
+              fs <- get_attribute(env,"family.status")
+              return(fs)
+            },
+            continue = TRUE,
+            family.trajectory.list
+          ) %>%
           timeout(
             function() return(runif(1,0.25,23.99))
           )%>%
@@ -588,6 +617,17 @@ processing_trajectory <- function(){
         i,
         "Inprocessing",
         "ICE.agent"
+      )
+    )
+  }
+  cis.trajectory.list <- list()
+  for(i in 1:length(family.status.probs[,1])){
+    cis.trajectory.list <- append(
+      cis.trajectory.list,
+      family_status_counter_trajectory(
+        i,
+        "CIS",
+        "CIS.screener"
       )
     )
   }
@@ -637,12 +677,12 @@ processing_trajectory <- function(){
         )
     ) %>% 
     branch(
-	option = function(){
-	  fs <- get_attribute(env,"family.status")
-	  return(fs)
- 	},
-	continue = TRUE,
-      inprocess.trajectory.list
+    	option = function(){
+    	  fs <- get_attribute(env,"family.status")
+    	  return(fs)
+     	},
+    	continue = TRUE,
+          inprocess.trajectory.list
     ) %>%
     timeout(
       function(){
@@ -671,8 +711,6 @@ processing_trajectory <- function(){
         return(proc.params$Value[w])
       }
     ) %>%
-    #seize("inprocessed.counter") %>%                      # not needed
-    #release("inprocessed.counter") %>%
     branch(
       option = function() {
         variable <- "security.risk"
@@ -702,11 +740,16 @@ processing_trajectory <- function(){
           }
         ) %>%
       release("security.counter") %>%
-      seize("repat.security") %>%                       #counter for departure of security holds. destination: off nsgb
-      release("repat.security") %>%
       release("nsgb.counter")                           # security folks timeout and do not use the migrant repat/resettle path
     ) %>%
-    seize("CIS.screener") %>%
+    branch(
+      option = function(){
+        fs <- get_attribute(env,"family.status")
+        return(fs)
+      },
+      continue = TRUE,
+      cis.trajectory.list
+    ) %>% 
     timeout(
       function(){
         time.now <- now(env)

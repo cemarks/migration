@@ -1,3 +1,9 @@
+#' ---
+#' title: "Migrant Simulation Analysis"
+#' author: "USSOUTHCOM and ARSOUTH ORSAs"
+#' date: "15 APR 2019"
+#' --- 
+
 
 #' # Purpose
 #' 
@@ -14,12 +20,54 @@
 #' This simulation is jointly developed by the Operations Research teams at
 #' USSOUTHCOM and ARSOUTH.
 
-
+#+ echo=FALSE, warning=FALSE, message=FALSE, results=FALSE
 #### LOAD PACKAGES
 library(ggplot2)
 library(simmer.plot)
 library(reshape2)
+library(simmer)
 
+set.seed(123456)
+
+# Set Directory #
+
+model_dir = "/home/cemarks/Projects/migration/new_model"
+
+# Import Model #
+
+source(paste(model_dir,"migrant_model.R",sep="/"))
+
+# Data input #
+
+## Set Input files ##
+
+migrant.datafile <- paste(model_dir,"migrant_inputs.xlsx",sep="/")
+areas.datafile <- paste(model_dir,"ship_info.xlsx",sep="/")
+processing.datafile <- paste(model_dir,"processing_inputs.xlsx",sep="/")
+
+## Source Data File ##
+
+source(paste(model_dir,"migrant_data_input.R",sep="/"))
+
+# Build model with data (produces "env",total.days) #
+
+## Set Build Parameters ##
+
+total.days <- 365*2
+repat.at.sea.prob <- 0.01
+
+## Source Build Script ##
+
+source(paste(model_dir,"migrant_model_build.R",sep="/"))
+
+
+# Run and analyze #
+
+env %>% run(
+  until <- total.days*24
+)
+
+#+ echo=FALSE, warning=FALSE, message=FALSE
 arrival.count <- nrow(get_mon_arrivals(env))
 
 ## READ IN and Prep data for Arrivals and Resources  
@@ -27,7 +75,6 @@ arrival.count <- nrow(get_mon_arrivals(env))
 
 arrivals2 <- get_mon_arrivals(env,per_resource = T)   ## per resource data view
 
-rm(env)
 
 arrivals2$wait_time <- arrivals2$end_time - arrivals2$start_time                                  ## total resource times
 arrivals2$start_day <- ceiling(arrivals2$start_time/24)                                           ## add start day of event
@@ -75,7 +122,7 @@ arrivals2 <- arrivals2[!(arrivals2$resource %in% unwanted.resources),]
 #' This plot shows the total migrants on maritime vessels and migrants that are at NSGB.
 #' (Counts reflects a snapshot taken at midnight daily )
 
-
+#+ echo=FALSE
 
 ## build a dataframe containing both the afloat and nsgb results
 afloat.df <- arrivals2[which(arrivals2$resource=="afloat.counter"),]
@@ -113,55 +160,24 @@ df.agg2 <- aggregate(
   data = resource.df.melt,
   FUN = sum
 )
-
-
-
+max.y <- max(df.agg2$value)
 g1 <- ggplot(data=df.agg2,
-            mapping=aes(x=as.numeric(gsub("day.","",variable,fixed=TRUE)), 
-                        y=value, 
-                        fill=resource) 
-            )+
+             mapping=aes(x=as.numeric(gsub("day.","",variable,fixed=TRUE)), 
+                         y=value, 
+                         fill=resource) 
+)+
   geom_line(aes(col=resource),size=2) +
   #geom_bar(stat="identity", position="dodge") +
   labs(title="Populations: Afloat and at NGSB", 
        subtitle= "as of 2400 hours each day",
        x="Day", y="number of migrants") +
   theme_bw()+
-  #theme(panel.background = element_blank())+
-  ylim(0,15000)+
+  ylim(0,max.y)+
   scale_color_manual(name="Location", labels = c("Afloat", "at NSGB"), values = c("blue", "green")) 
-  
+
 print(g1)
-rm(df.agg,df.agg2,afloat.df,GTMO.df,resource.df,resource.df.melt,g1)
-      
-#+ echo = FALSE, fig.width=7, fig.height=5
-# compute dataframe that shows the end of day totals for Cuba or Haiti both Afloat and GTMO
-# max.day <- ceiling(max(resource.df$end_time)/24)
-# sums.df <- data.frame(
-#   day = rep(1:max.day,4),
-#   source = c(rep("Haiti",max.day),rep("Haiti",max.day),rep("Cuba",max.day),rep("Cuba",max.day)),
-#   resource = c(rep("Afloat",max.day),rep("GTMO",max.day),rep("Afloat",max.day),rep("GTMO",max.day)),
-#   quantity = c(
-#     colSums(afloat.df[grep("Haiti",afloat.df$name),grep("day.",names(afloat.df),fixed=TRUE)]),
-#     colSums(GTMO.df[grep("Haiti",GTMO.df$name),grep("day.",names(GTMO.df),fixed=TRUE)]),
-#     colSums(afloat.df[grep("Cuba",afloat.df$name),grep("day.",names(afloat.df),fixed=TRUE)]),
-#     colSums(GTMO.df[grep("Cuba",GTMO.df$name),grep("day.",names(GTMO.df),fixed=TRUE)])
-#   )
-# )
-# 
-# g2 <- ggplot(
-#   data=sums.df,
-#   mapping = aes(
-#     x = day,
-#     y = quantity,
-#     color = source,
-#     lty = resource
-#   )
-# ) + geom_line()
-# 
-# g2
 
-
+rm(df.agg2,afloat.df,GTMO.df,resource.df,resource.df.melt,g1)
 
 #' # Daily Repatriation Counts: .
 
@@ -169,39 +185,8 @@ rm(df.agg,df.agg2,afloat.df,GTMO.df,resource.df,resource.df.melt,g1)
 #' populations are depicted by their nationality (Cuban, Haitian, Other) as well as the number of 
 #' returned 'security risk' personnel who are segregated into a separate holding camp on NSGB.
 
-# tag for deletion:
-# arrivals2 <- get_mon_arrivals(env,per_resource = T)   ## per resource data view
-# arrivals2$wait_time <- arrivals2$end_time - arrivals2$start_time                                  ## total resource times
-# arrivals2$start_day <- ceiling(arrivals2$start_time/24)                                           ## add start day of event
-# arrivals2$end_day <- ceiling(arrivals2$end_time/24)                                               ## add end day of event
+#+ echo=FALSE, warning=FALSE, fig.width=7
 
-
-# add columns for start.day1, end.day1. etc and fill with 0 or 1 for whether the event is active 
-# this code takes too much memory for large migrant populations. therefore chunck it over the sources.
-# for(day in 1:max.day){
-#   midnight <- day*24
-#   arrivals2 <- cbind(
-#     arrivals2,
-#     as.numeric(
-#       arrivals2$end_time < midnight & arrivals2$end_time >= (midnight-24)
-#     )
-#   )
-#   names(arrivals2)[ncol(arrivals2)] <- paste("end.day",day,sep=".")
-#   arrivals2 <- cbind(
-#     arrivals2,
-#     as.numeric(
-#       arrivals2$start_time < midnight & arrivals2$start_time >= (midnight-24)
-#     )
-#   )
-#   names(arrivals2)[ncol(arrivals2)] <- paste("start.day",day,sep=".")
-# }
-# # keep first nine columns of arrrival2 and then add the end.day.1 and start.day.1 with value in the rows
-# arrivals.melt <- melt(
-#   arrivals2,
-#   measure.vars = grep("day.",names(arrivals2),fixed = TRUE,value = TRUE)
-# )
-
-#### REPAT ANALYSIS ####
 resources <- c("repat-Haitian", "repat-Cuban", "repat-Other", "repat.security")
 
 repat.all <- arrivals2[which(arrivals2$resource %in% resources),]
@@ -230,8 +215,8 @@ repat.all.melt <- melt(
   repat.all,
   measure.vars = grep("day.",names(repat.all),fixed = TRUE,value = TRUE)
 )
-
 rm(repat.all)
+
 df <- repat.all.melt[which(grepl("end.day",repat.all.melt$variable)),]
 rm(repat.all.melt)
 
@@ -241,27 +226,26 @@ df.agg <- aggregate(
   FUN = sum
 )
 rm(df)
-
+max.y <- max(df.agg$value)
 g2 <- ggplot(
   data = df.agg,
   mapping=aes(x=as.numeric(gsub("end.day.","",variable,fixed=TRUE)), y=value, fill=resource)
 ) + 
-   #geom_point(aes(col=resource)) +
   geom_bar(stat="identity", position=position_dodge())+
   labs(title="Repatriations from NSGB", x="Day", y="number of migrants", legend="Activity") +
-  ylim(0,100)+
+  ylim(0,max.y)+
   scale_fill_discrete(name="Activity")
 print(g2)
 
 rm(df.agg,g2)
-
 #' # Daily Resettlement Counts: .
 #' This plot shows the total number of NSGB migrants resettled in the 24-hour period. Resettled 
 #' populations are depicted by their nationality (Cuban, Haitian, Other).  
 
-resources <- c("resettle-Haitian", "resettle-Cuban", "resettle-Other")
+#+ echo=FALSE, warning=FALSE, fig.width=7
+resource.list <- c("resettle-Haitian", "resettle-Cuban", "resettle-Other")
 
-reset.all <- arrivals2[which(arrivals2$resource %in% resources),]
+reset.all <- arrivals2[which(arrivals2$resource %in% resource.list),]
 
 # Add start.day and end.day 0 or 1 checks
 for(day in 1:max.day){
@@ -287,7 +271,7 @@ reset.all.melt <- melt(
   reset.all,
   measure.vars = grep("day.",names(reset.all),fixed = TRUE,value = TRUE)
 )
-
+rm(reset.all)
 
 df <- reset.all.melt[which(grepl("end.day",reset.all.melt$variable)),]
 rm(reset.all.melt)
@@ -297,6 +281,7 @@ df.agg <- aggregate(
   FUN = sum
 )
 rm(df)
+max.y <- max(df.agg$value)
 
 g3 <- ggplot(
   data = df.agg,
@@ -304,10 +289,9 @@ g3 <- ggplot(
 ) + 
   geom_bar(stat="identity", position=position_dodge())+
   labs(title="Resettlements from NSGB", x="Day", y="number of migrants", legend="Activity") +
-  ylim(0,100)+
+  ylim(0,max.y)+
   scale_fill_discrete(name="Activity")
 print(g3)
-
 rm(df.agg,g3)
 
 #' # Daily Interdiction Counts: .
@@ -315,12 +299,14 @@ rm(df.agg,g3)
 #' migrants that were repatriated directly from afloat and migrants that were rescued and await 
 #' delivery to NSGB.  
 
+#+ echo=FALSE, warning=FALSE, fig.width=7
+
 #### Interdictions ####
 # counts repat_afloats which are 'automatically returned' and all interdictions that day.  Not an end of day count.
 
-resources <- c("afloat.counter","repat_afloat")
+resource.list <- c("afloat.counter","repat_afloat")
 
-interdictions.all <- arrivals2[which(arrivals2$resource %in% resources),]
+interdictions.all <- arrivals2[which(arrivals2$resource %in% resource.list),]
 
 # Add start.day and end.day 0 or 1 checks
 for(day in 1:max.day){
@@ -356,6 +342,7 @@ df.agg <- aggregate(
   data = df,
   FUN = sum
 )
+max.y <- max(df.agg$value)
 rm(df)
 
 g4 <- ggplot(
@@ -364,7 +351,7 @@ g4 <- ggplot(
 ) + 
   geom_bar(stat="identity")+
   labs(title="Interdictions", x="Day", y="number of migrants") +
-  ylim(0,100) +
+  ylim(0,max.y) +
   scale_fill_discrete(name="Activity")
 print(g4)
 rm(df.agg,g4)
@@ -373,33 +360,34 @@ rm(df.agg,g4)
 #' This plot conveys the waiting times for migrants afloat.  It shows the number of migrants
 #' grouped into bins that represent their waiting-times. 
 
+#+ echo=FALSE, warning=FALSE, fig.width=7
+
 #### AFLOAT TIME Analysis.  Histogram and timeseries.
 # First add a column to the dataframe identifying the migrant source.
 arrivals2$source <- "Haiti"
 arrivals2$source[grep("Cuba",arrivals2$name)] <- "Cuba"
 
-
 #### build a histogram  ####
 # use the single migrant dataframe which is arrivals2 #
 
-# hist(arrivals2$wait_time[which(arrivals2$resource=="afloat.counter")])
-# 
-# df <- arrivals.melt[which(arrivals.melt$resource=="afloat.counter"),]
-
 g5 <- ggplot(
   data = arrivals2[which(arrivals2$resource=="afloat.counter"),],
-  mapping=aes(x=wait_time)
+  mapping=aes(x=wait_time/24)
 ) + 
-  geom_histogram(aes(fill=source)) +
-  labs(title="Afloat Waiting Times ", x="Time Waiting", y="number of migrants") +
+  geom_histogram(aes(fill=source), binwidth=7) +
+  labs(title="Afloat Times of Migrants delivered to NSGB in Days ", 
+       x="Time Waiting (days)", 
+       y="number of migrants") +
   scale_fill_discrete(name="Departure Source")
 print(g5)
-
 rm(g5)
 
 #' ## Mean and MAX Waiting over Time
 #' The following pair of plots depict both the Maximum and the Average time afloat for migrants
 #' who are delivered to NSGB on the day shown.  
+
+#+ echo=FALSE, warning=FALSE, message=FALSE, fig.width=7
+require(gridExtra)
 
 resource <- "afloat.counter"
 
@@ -411,13 +399,16 @@ a.max <- aggregate(
 
 g6 <- ggplot(
   data = a.max,
-    mapping = aes(
-     x=end_day,
-     y=wait_time
-    )
-  ) +
+  mapping = aes(
+    x=end_day,
+    y=wait_time/24
+  )
+) +
   geom_point()+
-  labs(title="Afloat Waiting Times ", x="Arrival Day to NSGB", y="Migrant Max Waiting Time")
+  labs(title="Maximum Afloat Times for Migrants arriving that day to NSGB", 
+       x="Arrival Day to NSGB", 
+       y="Afloat Time (days)"
+       )
 
 
 a.mean <- aggregate(
@@ -430,22 +421,35 @@ g7 <- ggplot(
   data = a.mean,
   mapping = aes(
     x=end_day,
-    y=wait_time
+    y=wait_time/24
   )
 ) +
   geom_point() +
-  labs(title="Afloat Waiting Times ", x="Arrival Day to NSGB", y="Migrant Average Waiting Time")
+  labs(title="Average Afloat Times for Migrants arriving that day to NSGB ", 
+       x="Arrival Day to NSGB", 
+       y="Afloat Time (days)"
+       )
 
-
-require(gridExtra)
 grid.arrange(g6,g7)
-
 rm(a.mean,g6,g7,a.max)
+
+#' # NSGB Camp Population Details
+#' This section depicts the end of day counts of migrants on NSGB broken out into the following
+#' categories:  
+#' 1.Haitians (not protected and awaiting repatriation); 
+#' 2.Haitians (protected and awaiting resettlement)
+#' 3.Cubans (not protected and awaiting repatriation); 
+#' 4.Cubans (protected and awaiting resettlement);
+#' 5.Others
+#' 6.Security Risks (segregated from general population)
+ 
+#' ## Haitian Populations 
+#+ echo=FALSE, warning=FALSE, message=FALSE, fig.width=7
 
 #### DAILY NSGB POPULATIONS BY CATEGORY: NATIONALITY AND SECURITY.  END OF DAY QUEUE COUNTS   ####
 repat.haiti.df <- arrivals2[which(arrivals2$resource=="repat-Haitian"),]
 resettle.haiti.df <- arrivals2[which(arrivals2$resource=="resettle-Haitian"),]
-
+max.day<- max(arrivals2$end_day)
 for(day in 1:max.day){
   midnight <- day*24
   repat.haiti.df <- cbind(
@@ -494,6 +498,8 @@ g8 <- ggplot(data=df.agg3,
 print(g8)
 rm(df.agg3,g8)
 
+#' ## Cuban Populations 
+#+ echo=FALSE, warning=FALSE, message=FALSE, fig.width=7
 
 ### CUBA CAMP POPULATION:
 repat.cuba.df <- arrivals2[which(arrivals2$resource=="repat-Cuban"),]
@@ -518,13 +524,12 @@ for(day in 1:max.day){
 }
 
 depart.cuba.df <- rbind(repat.cuba.df,resettle.cuba.df)
-rm(repat.cuba.df,resettle.cuba.df)
+
 depart.cuba.df.melt <- melt(
   depart.cuba.df,
   measure.vars = grep("day.",names(depart.cuba.df),fixed = TRUE,value = TRUE)
 )
 rm(depart.cuba.df)
-
 df.agg4 <- aggregate(
   formula(value ~ variable + resource),
   data = depart.cuba.df.melt,
@@ -549,7 +554,9 @@ print(g9)
 
 rm(df.agg4,g9)
 
-### OTHER CAMP POPULATION:
+#' ## Other Populations 
+#+ echo=FALSE, warning=FALSE, message=FALSE, fig.width=7
+
 repat.other.df <- arrivals2[which(arrivals2$resource=="repat-Other"),]
 resettle.other.df <- arrivals2[which(arrivals2$resource=="resettle-Other"),]
 
@@ -572,40 +579,36 @@ for(day in 1:max.day){
 }
 
 depart.other.df <- rbind(repat.other.df,resettle.other.df)
-rm(repat.other.df,resettle.other.df)
 
 depart.other.df.melt <- melt(
   depart.other.df,
   measure.vars = grep("day.",names(depart.other.df),fixed = TRUE,value = TRUE)
 )
 rm(depart.other.df)
-
 df.agg5 <- aggregate(
   formula(value ~ variable + resource),
   data = depart.other.df.melt,
   FUN = sum
 )
 rm(depart.other.df.melt)
-
 # Plot Others
 g10 <- ggplot(data=df.agg5,
-             mapping=aes(x=as.numeric(gsub("day.","",variable,fixed=TRUE)), 
-                         y=value, 
-                         fill=resource) 
+              mapping=aes(x=as.numeric(gsub("day.","",variable,fixed=TRUE)), 
+                          y=value, 
+                          fill=resource) 
 )+
   geom_bar(stat="identity") +
   labs(title="'Other' Populations on NSGB", 
        subtitle= "as of 2400 hours each day",
        x="Day", y="number of migrants") +
   theme_bw()+
-  #ylim(0,15000)+
   scale_color_manual(name="Location") + #, labels = c("Afloat", "at NSGB"), values = c("blue", "green")) 
   facet_grid(resource~.)
 print(g10)
 rm(df.agg5,g10)
 
-
-### Security Camp
+#' ## Security Risk Populations 
+#+ echo=FALSE, warning=FALSE, message=FALSE, fig.width=7
 
 sec.camp.df <- arrivals2[which(arrivals2$resource=="security.counter"),]
 
@@ -627,22 +630,18 @@ sec.camp.df.melt <- melt(
   sec.camp.df,
   measure.vars = grep("day.",names(sec.camp.df),fixed = TRUE,value = TRUE)
 )
-
 rm(sec.camp.df)
-
 df.agg6 <- aggregate(
   formula(value ~ variable + resource),
   data = sec.camp.df.melt,
   FUN = sum
 )
-
 rm(sec.camp.df.melt)
-
 # Plot Others
 g11<- ggplot(data=df.agg6,
-              mapping=aes(x=as.numeric(gsub("day.","",variable,fixed=TRUE)), 
-                          y=value, 
-                          fill=resource) 
+             mapping=aes(x=as.numeric(gsub("day.","",variable,fixed=TRUE)), 
+                         y=value, 
+                         fill=resource) 
 )+
   geom_bar(stat="identity") +
   labs(title="'Security Camp' Populations on NSGB", 
@@ -650,168 +649,88 @@ g11<- ggplot(data=df.agg6,
        x="Day", y="number of migrants") +
   theme_bw()+
   #ylim(0,15000)+
-  scale_color_manual(name="Location") + #, labels = c("Afloat", "at NSGB"), values = c("blue", "green")) 
-  facet_grid(resource~.)
+  scale_fill_discrete(name="Location")  #, labels = c("Afloat", "at NSGB"), values = c("blue", "green")) 
 print(g11)
-
-rm(df.agg6,g11)
-
+rm(df.agg6,g11,arrivals2)
 
 
+#' # NSGB Inprocessing Queue Lengths
+#' This section depicts the inprocessing station queue length broken out by family category.
+#' 
+#+ echo=FALSE, warning=FALSE, fig.width=7
 
+resources <- get_mon_resources(env)
+r <- resources[
+  which(resources$resource %in% paste("Inprocessing",family.status.probs[,1],sep="_")),
+  ]
+rm(resources)
+r$resource <- factor(
+  r$resource,
+  levels = rev(
+    paste(
+      "Inprocessing",
+      c(
+        "Ch/Accompanied",
+        "F/Accompanied",
+        "M/Accompanied",
+        "Ch/Unaccompanied",
+        "F/Unaccompanied",
+        "M/Unaccompanied"
+      ),
+      sep = "_"
+    )
+  )
+)
 
-# AVERAGE AND MAX REPAT/RESETTLE TIMES PER DAY FOR THOSE DEPARTING.
+g12 <- ggplot(
+  data = r,
+  mapping = aes(
+    x = time/24,
+    y = server+1,
+    color = resource,
+    group = resource
+  )
+) +
+  geom_line(size=1) +
+  labs(
+    x = "Time (days)",
+    y = "Quantity",
+    title = "Inprocessing Queue Length"
+  ) +
+  scale_y_continuous(
+    trans = "log10"
+  ) + 
+  scale_color_manual(
+    values = c(
+      "Inprocessing_Ch/Accompanied" = "black",
+      "Inprocessing_F/Accompanied" = "green",
+      "Inprocessing_M/Accompanied" = "brown",
+      "Inprocessing_Ch/Unaccompanied" = "blue",
+      "Inprocessing_F/Unaccompanied" = "orange",
+      "Inprocessing_M/Unaccompanied" = "red"
+    ),
+    breaks = rev(
+      c(
+        "Inprocessing_Ch/Accompanied",
+        "Inprocessing_F/Accompanied",
+        "Inprocessing_M/Accompanied",
+        "Inprocessing_Ch/Unaccompanied",
+        "Inprocessing_F/Unaccompanied",
+        "Inprocessing_M/Unaccompanied"
+      )
+    ),
+    labels = rev(
+      c(
+        "Ch/Accompanied",
+        "F/Accompanied",
+        "M/Accompanied",
+        "Ch/Unaccompanied",
+        "F/Unaccompanied",
+        "M/Unaccompanied"
+      )
+    ),
+    name = "Family Status"
+  )
 
-
-# 
-# 
-# 
-# arr <- get_mon_arrivals(env)
-# 
-# 
-# 
-# 
-# 
-# 
-# 
-# 
-# 
-# check_day<- function(df.row, midnight){
-#   resource.start <- df.row[2]
-#   resource.end <- df.row[3]
-# if (resource.start <= midnight && resource.end >= midnight){
-#   return(1)
-# }else{
-#   return(0)
-# }
-# }
-# 
-# # df with migrant afloat counter
-# # afloat.counter includes time onboard in the boat.area plus transport/offload at NSGB.
-# 
-# d<- data.frame(matrix(nrow=100,ncol=2),stringsAsFactors = FALSE)
-# names(d) <- c("day","number_afloat")
-# df <- arrivals2[which(arrivals2$resource == "afloat.counter"),]
-#   for (i in 1:100){ 
-#     d[i,1] <- i
-#     d[i,2] <- sum(as.numeric(df$start_time <= i*24 & df$end_time >i*24))
-# }
-# # df with migrant on nsgb counter
-# d.add<- data.frame(matrix(nrow=100,ncol=1),stringsAsFactors = FALSE)
-# names(d.add) <- c("number_nsgb")
-# 
-# df <- arrivals2[which(arrivals2$resource == "nsgb.counter"),]
-#   for (i in 1:100){ 
-#     d.add[i,1] <- sum(as.numeric(df$start_time <= i*24 & df$end_time > i*24))
-#   }  
-#   
-# count.midnight <- cbind(d,d.add)                                            ## WIDE format dataframe
-# count.midnight.melt <- reshape2::melt(count.midnight,
-#                                       id.vars=c("day"),
-#                                       variable.name = "resource",
-#                                       value.name="count"
-#                                       )
-# 
-# 
-# #### BUILD DAILY SUMMARY COUNTS --> repats/resettles; interdicted, dropped NSGB, Conus Landings
-# 
-# unique(arrivals2$resource)
-# j <- data.frame(table(arrivals2$end_day, arrivals2$resource))  # builds a LONG format dataframe
-# names(j)<- c("day","resource","count")
-# j$day<-as.numeric(j$day)
-# 
-# ## Note: data does not exist for every day 
-# plot.data <- rbind(j,count.midnight.melt)
-# tail(plot.data)
-# 
-# 
-# g1 <- ggplot(data=plot.data[which(plot.data$resource=="afloat.counter"),], aes(x=day, y= count))+
-#   geom_bar(stat="identity")+
-#   labs(title="End of Day Afloat Count", 
-#        subtitle="As of Midnight",
-#        caption = "daily snapshot taken at midnight") +
-#   theme(axis.text.x = element_text(angle=65, vjust=.6, size=7)) 
-# 
-# g2 <- ggplot(data=plot.data[which(plot.data$resource=="nsgb.counter"),], aes(x=day, y= count))+
-#   geom_bar(stat="identity")+
-#   labs(title="End of Day NSGB Count", 
-#        subtitle="As of Midnight",
-#        caption = "daily snapshot taken at midnight") +
-#   theme(axis.text.x = element_text(angle=65, vjust=.6, size=7)) 
-# 
-# 
-# #### PLOTS of Waiting Times for each Resource
-# resource.list<- unique(arrivals2$resource)
-# 
-# # build vector of the counters we dont care about
-# ignore.waiting <- c(
-#   "repat.security",
-#   "wait.ferry.to.windward",
-#   "wait.ferry.to.leeward",
-#   "area_1",
-#   "area_2",
-#   "area_3",
-#   "area_4",
-#   "area_5",
-#   "inprocessed.counter",
-#   "berth",
-#   "repat_afloat"
-# )
-# 
-# w <- !(resource.list %in% ignore.waiting)
-# plot.vector <- resource.list[w]
-# for (item in plot.vector){
-#     dev.new()
-#     print(ggplot(data=arrivals2[which(arrivals2$resource==item & arrivals2$end_day<100),],aes(x=end_day,y=wait_time))+
-#     geom_point()+
-#     geom_smooth(method=lm, se=F) + 
-#     ggtitle(item)+
-#     xlim(0,100)
-#   )
-# }
-# 
-# 
-# 
-# 
-# 
-# ##### DATA Checks  #####
-# 
-# 
-# #track single  migrant.  Overall time and then by resource.
-# arrivals[which(arrivals$name=="Haiti-migrant138"),]
-# ab[which(ab$name=="Haiti-migrant138"),]
-# table(arrivals)
-# 
-# 
-# e <- arrivals2[which(arrivals2$resource=='transit-to-leeward'),]
-# head(e,n=160)
-# 
-# 
-# attributes <- get_mon_attributes(env)
-# a <-attributes[which(attributes$key=="ICE.counter"),]
-# max(a$value)                                                                            # ID the max number representing folks completing ICE screening. 
-# 
-# arrivals2[which(arrivals2$name=="Haiti-migrant138"),]
-# arrivals2[which(arrivals2$name=="Cuba-migrant624"),]
-# arrivals2[which(arrivals2$name=="Cuba-migrant637"),]
-# 
-# ab <- arrivals2[which(arrivals2$resource=="nsgb.counter"),]
-# ab
-# head(ab, n=25)
-# 
-# 
-# ## Compute average stats on the resources.  Uses the resources df.
-# ## do this for resources of interest that generate a queue.
-# 
-# queue_state <- head(resources$queue,-1)    #remove last entry to enable differencing
-# server_state <- head(resources$server,-1)
-# 
-# time_state_lasted <- diff(resources$time)  
-# time_at_end <- max(resources$time)
-# 
-# mean_server_activity <- sum(server_state * time_state_lasted)/time_at_end
-# mean_waiting_migrants <- sum(queue_state * time_state_lasted)/time_at_end
-# 
-# 
-# 
-
+print(g12)
+rm(env, r,g12)

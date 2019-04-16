@@ -4,7 +4,7 @@ set.seed(123456)
 
 # Set Directory #
 
-model_dir = "C:/Users/christopher.e.marks/My Documents/new_model"
+model_dir = "F:/Desktop/Rscripts/migration/new_model"
 
 # Import Model #
 

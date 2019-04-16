@@ -1,9 +1,5 @@
 library(readxl)
 
-
-
-
-
 ## Input helper functions & Parameters ##
 
 ### check table function ###
@@ -61,7 +57,6 @@ triangle.server.cols <- c(
   "server.count",
   "service.hours"
 )
-
 
 ## migrant sources ##
 
@@ -129,7 +124,7 @@ security.risk.probs <- security.risk.probs[
     as.character(family.status.probs[,1]),
     as.character(security.risk.probs[,1])
   ),
-]
+  ]
 
 ## protected status probabilities ##
 protected.probs <- check_table(
@@ -140,58 +135,7 @@ protected.probs <- check_table(
   row1.vector = migrant.attributes$protected
 )
 
-## pickup areas ##
 
-pickup.areas <- check_pickup_areas(
-  as.data.frame(
-    read_excel(
-      areas.datafile,
-      sheet = "pickup.areas"
-    )
-  ),
-  names.vector = c(
-    as.character(migrant.sources$Source),
-    "migrant.timeout",
-    "timeout.action",
-    "transit.time"
-  )
-)
-
-## Ship Attributes ##
-
-ship.attributes <- check_table(
-  as.data.frame(
-    read_excel(
-      areas.datafile,
-      sheet = "ship.attributes"
-    )
-  ),
-  names.vector <- c(
-    "sat.capacity",
-    "supersat.capacity",
-    "occupied.time",
-    "sat.time",
-    "supersat.time",
-    "offload.time",
-    "berth.occupation",
-    "recovery.time"
-  ),
-  error.d = "boat attributes"
-)
-
-## Ship Allocation ##
-
-ship.allocation <- check_table(
-  as.data.frame(
-    read_excel(
-      areas.datafile,
-      sheet = "ship.allocation"
-    )
-  ),
-  names.vector <- as.character(ship.attributes[,1]),
-  error.d = "boat attributes",
-  row1.vector = as.character(pickup.areas[,1])
-)
 
 ## Processing Center Transit ##
 
@@ -212,8 +156,7 @@ proc.params <- check_table(
     "ferry.capacity",
     "ferry.transit.time",
     "ferry.reset",
-    "ferry.service.hours",
-    "big.boat.berth.capacity"
+    "ferry.service.hours"
   )
 )
 
@@ -376,4 +319,15 @@ for(n in nationality.probs[,1]){
   }
 }
 
+
+## Initial Conditions ##
+
+initial.camp <- read_excel(
+  initial.conditions.datafile,
+  sheet = "camp"
+)
+initial.boat <- read_excel(
+  initial.conditions.datafile,
+  sheet = "afloat"
+)
 
