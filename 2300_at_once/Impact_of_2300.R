@@ -145,7 +145,8 @@ env <- env %>% run(until = total.days*24)
 #' * Go through CIS screening.
 #'     * Some migrants are delayed for CIS rescreening.
 #' * Return to windward and await resettlement/repatriation.
-
+#'
+#'
 #' # Results
 #' 
 #' ## Ferry transit queue
