@@ -1,13 +1,10 @@
-## Migrant model helper functions
-
-
-## Probability Distribution functions & parameters ##
-
 epsilon <- function(){
-  return(runif(1,0.05,0.2))
+  return(stats::runif(1,0.05,0.2))
 }
 
-small.epsilon <- 0.001
+small.epsilon <- function(){
+  return(0.001)
+} 
 
 triangle_quantile <- function(r,t.mode,t.min,t.max){
   ymax = 2/(t.max-t.min)
@@ -28,7 +25,7 @@ rtriang <- function(t.mode,t.min,t.max){
   if((t.min == t.mode) && (t.mode == t.max)){
     return(t.mode)
   } else {
-    r <- runif(1)
+    r <- stats::runif(1)
     return(triangle_quantile(r,t.mode,t.min,t.max))
   }
 }
@@ -37,11 +34,10 @@ prob_generator_int <- function(prob.vector){
   # Renormalize
   prob.vector <- prob.vector/sum(prob.vector)
   cum.prob <- cumsum(prob.vector)
-  r <- runif(1)
+  r <- stats::runif(1)
   w <- which(cum.prob > r)[1]
   return(w)
 }
-
 prob_generator <- function(input.table,mig.source){
   # Renormalize
   w <- prob_generator_int(input.table[,mig.source])
@@ -52,16 +48,16 @@ prob_generator <- function(input.table,mig.source){
     )
   )
 }
-
-security_risk_prob_generator <- function(family.status.value,mig.source,security.risk.probs){
+security_risk_prob_generator <- function(family.status.value,mig.source){
   p <- security.risk.probs[family.status.value,mig.source]
-  r <- runif(1)
+  r <- stats::runif(1)
   if(r <= p){
     return(1) # Security Risk
   } else {
     return(2)
   }
 }
+
 
 src_generator <- function(migrant.sources,source.rates,nat=NULL,t=0){
     if(is.null(nat)){

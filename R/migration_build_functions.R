@@ -17,20 +17,20 @@ migrant_function_generator <- function(mig.source){
       if(p<=0){
         return(-1)
       } else {
-        return(rexp(1,p))
+        return(stats::rexp(1,p))
       }
     }
   )
 }
 
 migrant_arrival_time <- function(day){
-  return(day*24+runif(1,8,12))
+  return(day*24+stats::runif(1,8,12))
 }
 
 ## Boat first arrivals ##
 
 boat_first_arrivals <- function(boat.count){
-  return(sort(runif(boat.count,1,24)))
+  return(sort(stats::runif(boat.count,1,24)))
 }
 
 ## Ferry start times ##
@@ -84,13 +84,13 @@ create_schedule <- function(schedule.data.frame,total.days){
   values <- rep(0,length(times))
   values[seq(1,(length(times)-1),2)] <- v
   return(
-    schedule(
+    simmer::schedule(
       timetable = times,
       values = values
     )
   )
   return(
-    schedule(
+    simmer::schedule(
       timetable = times,
       values = servers
     )
@@ -127,7 +127,7 @@ repat_resettle_schedule <- function(sched.data.frame,nationality,protected,total
   values <- rep(0,length(times))
   values[seq(1,(length(times)-1),2)] <- v
   return(
-    schedule(
+    simmer::schedule(
       timetable = times,
       values = values
     )
