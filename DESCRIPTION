@@ -3,7 +3,12 @@ Title: Simulate Mass Migration Event
 Version: 0.0.0.9000
 Authors@R: person("Christopher", "Marks", email = "cemarks@alum.mit.edu", role = "aut"), person("Paul", "Hurley", email = "paul.j.hurley.civ@mail.mil", role = c("aut", "cre")), person("Casey", "Connors", email = "casey.d.connors.mil@mail.mil", role = "aut")
 Description: Simulate migrant interdiction and processing as a queueing process using the "simmer" package.
-Depends: R (>= 3.5.0), simmer, ggplot2, stats
+Depends: R (>= 3.5.0), simmer, stats
+Recommends: simmer.plot, ggplot2
 License: MIT
 Encoding: UTF-8
 LazyData: true
+Suggests: 
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr

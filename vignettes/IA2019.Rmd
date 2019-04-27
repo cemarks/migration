@@ -1,0 +1,20 @@
+---
+title: "IA2019"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{IA2019}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+```{r setup}
+library(migration)
+```
+

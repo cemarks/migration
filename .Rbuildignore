@@ -1,2 +1,4 @@
 ^migration\.Rproj$
 ^\.Rproj\.user$
+^binaries
+^binaries/*
