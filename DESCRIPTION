@@ -5,7 +5,7 @@ Authors@R: person("Christopher", "Marks", email = "cemarks@alum.mit.edu", role =
 Description: Simulate migrant interdiction and processing as a queueing process using the "simmer" package.
 Depends: R (>= 3.5.0), simmer, stats
 Suggests: simmer.plot, ggplot2, knitr, rmarkdown, readxl, reshape
-License: MIT
+License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
 VignetteBuilder: knitr
