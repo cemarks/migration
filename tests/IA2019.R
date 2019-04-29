@@ -1,28 +1,31 @@
----
-title: "IA2019"
-output: rmarkdown::html_vignette
-vignette: >
-  %\VignetteIndexEntry{IA2019}
-  %\VignetteEngine{knitr::rmarkdown}
-  %\VignetteEncoding{UTF-8}
----
-
-```{r, include = FALSE}
-knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>"
-)
-```
-
-```{r setup}
 # library(migration)
 library(simmer)
 library(readxl)
 library(ggplot2)
 library(reshape)
-```
 
-```{r echo=FALSE}
+
+# migrant.input.file <- system.file(
+#   "extdata",
+#   "migrant_arrivals_inputs.xlsx",
+#   package="migration",
+#   mustWork=TRUE
+# )
+# ship.input.file <- system.file(
+#   "extdata",
+#   "ship_transit_inputs.xlsx",
+#   package="migration",
+#   mustWork=TRUE
+# )
+# camp.input.file <- system.file(
+#   "extdata",
+#   "camp_processing_inputs.xlsx",
+#   package="migration",
+#   mustWork=TRUE
+# )
+
+############ REPLACEMENT FOR ABOVE FOR DEBUGGING #####
+
 source.dir <- "/home/cemarks/Projects/migration/R"
 source.files <- dir(source.dir)
 for(f in source.files){
@@ -41,46 +44,9 @@ migrant.input.file <- "/home/cemarks/Projects/migration/inst/extdata/migrant_arr
 ship.input.file <- "/home/cemarks/Projects/migration/inst/extdata/ship_transit_inputs.xlsx"
 camp.input.file <- "/home/cemarks/Projects/migration/inst/extdata/camp_processing_inputs.xlsx"
 initial.conditions.datafile <- "/home/cemarks/Projects/migration/inst/extdata/initialization.xlsx"
-```
 
-# Description
+######################################################
 
-This vignette reproduces some of the Integrated Advance 2019 analysis using the `migration` package.  This somewhat complicated scenario involves pre-populating the camps and the boats with migrants, and running the scenario with new arrivals.
-
-# Inputs
-
-
-The package is configured to read input data from supporting Excel files.  The table formatting must be consistent with this example and between tables.  This package contains some sample files.
-
-```{r eval=FALSE}
-migrant.input.file <- system.file(
-  "extdata",
-  "migrant_arrivals_inputs.xlsx",
-  package="migration",
-  mustWork=TRUE
-)
-ship.input.file <- system.file(
-  "extdata",
-  "ship_transit_inputs.xlsx",
-  package="migration",
-  mustWork=TRUE
-)
-camp.input.file <- system.file(
-  "extdata",
-  "camp_processing_inputs.xlsx",
-  package="migration",
-  mustWork=TRUE
-)
-initial.conditions.datafile <- system.file(
-  "extdata",
-  "initialization.xlsx",
-  package="migration",
-  mustWork=TRUE
-)
-```
-
-## Load standard data files
-```{r}
 migrant.inputs <- migrant_inputs(migrant.input.file)
 ship.inputs <- ship_area_inputs(
   ship.input.file,
@@ -90,13 +56,8 @@ processing.inputs <- processing_center_inputs(
   camp.input.file,
   migrant.inputs$nationality.probs
 )
-```
 
-# Basic Model Build
 
-## Camp sub-trajectory
-
-```{r}
 camp.trajectory <- trajectory() %>%
   seize("nsgb.counter") %>%
   health_branch(
@@ -145,37 +106,24 @@ migrant_processing <- function(
   )
   return(o)
 }
-```
 
-
-## Ship trajectories
-
-```{r}
 ship.trajectories <- boat_trajectory_list(
   ship.inputs$pickup.areas,
   ship.inputs$ship.attributes,
   ship.inputs$ship.allocation
 )
-```
 
-## Ferry trajectory
-
-```{r}
 ferry.trajectory <- ferry_trajectory(
   processing.inputs$proc.params
 )
-```
 
-## Initial Conditions 
+# initial.conditions.datafile <- system.file(
+#   "extdata",
+#   "initialization.xlsx",
+#   package="migration",
+#   mustWork=TRUE
+# )
 
-There is no standard method of initializing migrants within 
-the process.  However, the modular design of the package
-code simplifies initialization by making it relatively easy
-to construct and source sub-trajectories.
-
-### Read initial conditions from file
-
-```{r}
 initial.camp <- readxl::read_excel(
   initial.conditions.datafile,
   sheet = "camp"
@@ -188,12 +136,7 @@ initial.afloat <- readxl::read_excel(
   initial.conditions.datafile,
   sheet = "afloat_remaining"
 )
-```
 
-
-### Initial populations in the camps trajectories
-
-```{r}
 camp.initialization <- list()
 cnt <- 1
 for(i in 1:nrow(initial.camp)){
@@ -222,13 +165,7 @@ for(i in 1:nrow(initial.camp)){
     cnt <- cnt + 1
   }
 }
-```
 
-### Initial populations afloat with known camp arrival trajectories
-
-Rather than set up the ship trajectories to match known camp arrivals, we can just drop these migrants off at the processing camp.  Here we create the required trajectories.
-
-```{r}
 proc.dropoff.initialization <- list()
 w <- grep("day",names(initial.inbound),ignore.case=TRUE)
 cnt <- 1
@@ -262,14 +199,7 @@ for(i in 1:nrow(initial.inbound)){
     }
   }
 }
-```
 
-
-### Initial populations afloat with no known camp arrival trajectories
-
-Here we create trajectories that we will use to put these migrants directly into the pickup areas at initialization time.
-
-```{r}
 afloat.initialization <- list()
 cnt <- 1
 for(i in 1:nrow(initial.afloat)){
@@ -302,21 +232,9 @@ for(i in 1:nrow(initial.afloat)){
     cnt <- cnt + 1
   }
 }
-```
 
-# Build the Model
-
-## Initialize
-
-```{r}
 env <- simmer()
-```
 
-## Add generators
-
-### Add migrants
-
-```{r}
 for(i in 1:nrow(migrant.inputs$migrant.sources)){
   env <- add_generator(
     env,
@@ -348,11 +266,7 @@ for(i in 1:nrow(migrant.inputs$migrant.sources)){
     )
   )
 }
-```
 
-### Add boat generators
-
-```{r}
 for(i in 1:length(ship.trajectories)){
   env <- add_generator(
     env,
@@ -370,11 +284,7 @@ for(i in 1:length(ship.trajectories)){
     )
   )
 }
-```
 
-### Add ferry generators
-
-```{r}
 env <- add_generator(
   env,
   name_prefix = "ferry",
@@ -385,11 +295,7 @@ env <- add_generator(
     )
   )
 )
-```
 
-## Add initialization generators
-
-```{r}
 for(i in 1:length(camp.initialization)){
   env <- add_generator(
     env,
@@ -444,12 +350,7 @@ for(i in 1:length(afloat.initialization)){
     )
   )
 }
-```
 
-
-## Add resources and globals
-
-```{r}
 
 total.days <- 45
 
@@ -464,24 +365,18 @@ env <- add_all_resources_globals(
   processing.inputs$cis.schedule,
   processing.inputs$move.outs
 )
-```
+
 
 # Run the Simulation
 
-```{r}
 env <- run(
   env,
   until = total.days*24
 )
-```
 
 
-# Analyze Results
+## Analysis
 
-## Plot migrants afloat and at the processing center.
-
-```{r fig.width=8, fig.height=7}
-# Helper function to create step plot
 create_steps <- function(df,x.col,y.col,group.col){
   if(is.numeric(x.col)){
     x.int <- x.col
@@ -585,4 +480,3 @@ g <- ggplot(
   )
 
 plot(g)
-```

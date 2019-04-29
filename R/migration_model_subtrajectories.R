@@ -1,4 +1,5 @@
 family_status_counter_trajectory <- function(
+  family.status.probs,
   family.status.int,
   queue.name,
   queue.resource = NULL
@@ -17,14 +18,15 @@ family_status_counter_trajectory <- function(
 }
 
 ferry_to_windward <- function(.trj,proc.params){
-  trj <- simmer::trajectory() %>%
-    .trj,
-    simmer::seize("wait.ferry.to.windward") %>%
+  trj <- simmer::seize(
+      .trj,
+      "wait.ferry.to.windward"
+    ) %>%
     simmer::seize(
       "transit-to-windward"
     ) %>%
     simmer::release("wait.ferry.to.windward") %>%
-    simmer::timeout(2*small.epsilon) %>%
+    simmer::timeout(2*small.epsilon()) %>%
     simmer::release("transit-to-windward") %>%
     simmer::timeout(
       function(){
@@ -32,18 +34,16 @@ ferry_to_windward <- function(.trj,proc.params){
         return(proc.params$Value[w])
       }
     )
-  )
   return(trj)
 }
 
 ferry_to_leeward <- function(.trj,proc.params){
-  trj <- .trj %>%
-    simmer::seize("wait.ferry.to.leeward")%>%                          # initiate leeward dock counter
+  trj <- simmer::seize(.trj,"wait.ferry.to.leeward")%>%                          # initiate leeward dock counter
     simmer::seize(
       "transit-to-leeward"
     ) %>%
     simmer::release("wait.ferry.to.leeward") %>%                       # counter for dock waiting time
-    simmer::timeout(2*small.epsilon) %>%
+    simmer::timeout(2*small.epsilon()) %>%
     simmer::release("transit-to-leeward") %>%
     simmer::timeout(
       function(){
@@ -51,7 +51,6 @@ ferry_to_leeward <- function(.trj,proc.params){
         return(proc.params$Value[w])
       }
     )
-  )
   return(trj)
 }
 
@@ -71,37 +70,37 @@ timeout_to_boat_op <- function(.trj,proc.params){
 }
 
 security_risk_branch <- function(.trj,sec.repat){
-  trj <- .trj %>%
-    simmer::branch(
-      option = function() {
-        variable <- "security.risk"
-        value <- simmer::get_attribute(env,variable)
-        key.index <- 1                                     # Need this because security risks are handled differently.
-        if(value == key.index){
-          return(1)
-        } else {
-          return(0)
-        }
-      },
-      continue = FALSE,                                  # security folks timeout and do not use the migrant repat/resettle path
-      simmer::trajectory(name="security.risk") %>%
-        simmer::seize("security.counter") %>%
-        simmer::timeout(
-          function(){
-            time.now <- simmer::now(env)
-            w <- max(which(sec.repat$time <= time.now))
-            return(
-              rtriang(
-                sec.repat$sec.risk.repat.mode[w],
-                sec.repat$sec.risk.repat.min[w],
-                sec.repat$sec.risk.repat.max[w]
-              )
+  trj <- simmer::branch(
+    .trj,
+    option = function() {
+      variable <- "security.risk"
+      value <- simmer::get_attribute(env,variable)
+      key.index <- 1                                     # Need this because security risks are handled differently.
+      if(value == key.index){
+        return(1)
+      } else {
+        return(0)
+      }
+    },
+    continue = FALSE,                                  # security folks timeout and do not use the migrant repat/resettle path
+    simmer::trajectory(name="security.risk") %>%
+      simmer::seize("security.counter") %>%
+      simmer::timeout(
+        function(){
+          time.now <- simmer::now(env)
+          w <- max(which(sec.repat$time <= time.now))
+          return(
+            rtriang(
+              sec.repat$sec.risk.repat.mode[w],
+              sec.repat$sec.risk.repat.min[w],
+              sec.repat$sec.risk.repat.max[w]
             )
-          }
-        ) %>%
-        simmer::release("security.counter") %>%
-        simmer::release("nsgb.counter")                           # security folks timeout and do not use the migrant repat/resettle path
-    )
+          )
+        }
+      ) %>%
+      simmer::release("security.counter") %>%
+      simmer::release("nsgb.counter")                           # security folks timeout and do not use the migrant repat/resettle path
+  )
   return(trj)
 }
 
@@ -159,17 +158,54 @@ set_all_attributes <- function(
   t=0
 ){
   if(is.null(src)){
-    src <- src_generator(migrant.sources,source.rates,nat,t)
+    src <- src_generator(
+      migrant.sources,
+      source.rates,
+      nationality.probs,
+      nat,
+      t
+    )
+  } else if(is.character(src)){
+    w <- which(migrant.sources$Source==src)
+    if(length(w) != 1){
+      stop("Cannot set migrant source: bad input value.")
+    }
+    src <- w
   }
   src.str <- migrant.sources[src,1]
   if(is.null(nat)){
     nat <- prob_generator(nationality.probs,src.str)$value
+  } else if(is.character(nat)) {
+    w <- which(nationality.probs[,1]==nat)
+    if(length(w) != 1){
+      stop("Cannot set nationality: bad input value.")
+    }
+    nat <- w
   }
   if(is.null(fs)){
     fs <- prob_generator(family.status.probs,src.str)$value
+  } else if(is.character(fs)) {
+    w <- which(family.status.probs[,1]==fs)
+    if(length(w) != 1){
+      stop("Cannot set family status: bad input value.")
+    }
+    fs <- w
   }
   if(is.null(hth)){
     hth <- prob_generator(health.probs,src.str)$value
+  } else if(is.character(hth)) {
+    w <- which(health.probs[,1]==hth)
+    if(length(w) != 1){
+      stop("Cannot set health status: bad input value.")
+    }
+    hth <- w
+  }
+  if(is.character(prot)){
+    w <- which(protected.probs[,1]==prot)
+    if(length(w) != 1){
+      stop("Cannot set protected status: bad input value.")
+    }
+    prot <- w
   }
   if(is.null(sr)){
     if(is.null(prot) || prot == 2){
@@ -206,7 +242,8 @@ set_all_attributes <- function(
 }
 
 repat_trajectory_list <- function(
-  nationality.probs,family.status.probs
+  nationality.probs,
+  family.status.probs
 ){
   repat.trajectory.list <- list()
   for(n in nationality.probs[,1]){
@@ -215,7 +252,8 @@ repat_trajectory_list <- function(
       for(i in 1:length(family.status.probs[,1])){
         family.trajectory.list <- append(
           family.trajectory.list,
-          family_status_counter_simmer::trajectory(
+          family_status_counter_trajectory(
+            family.status.probs,
             i,
             paste(protected,n,sep="-"),
             paste(protected,n,sep="-")
@@ -271,7 +309,8 @@ ICE_trajectory_list <- function(family.status.probs){
   for(i in 1:length(family.status.probs[,1])){
     ICE.trajectory.list <- append(
       ICE.trajectory.list,
-      family_status_counter_simmer::trajectory(
+      family_status_counter_trajectory(
+        family.status.probs,
         i,
         "Inprocessing",
         "ICE.agent"
@@ -318,7 +357,8 @@ cis_trajectory_list <- function(family.status.probs){
   for(i in 1:length(family.status.probs[,1])){
     cis.trajectory.list <- append(
       cis.trajectory.list,
-      family_status_counter_simmer::trajectory(
+      family_status_counter_trajectory(
+        family.status.probs,
         i,
         "CIS",
         "CIS.screener"
@@ -389,30 +429,37 @@ CIS_screening <- function(
   return(trj)
 }
 
-area_trajectory_list <- function(
+pickup_area <- function(
+  .trj,
   pickup.areas,
   ship.attributes,
-  follow.on = simmer::trajectory()
+  repat.at.sea.prob = 0.1
 ){
-  area.trajectories <- list()
+  trj.list <- list()
   for(area.index in 1:nrow(pickup.areas)){
-    journey.time <- pickup.areas$transit.time[area.index]
-    timeout.action <- pickup.areas$timeout.action[area.index]
-    if(timeout.action == 'depart'){
-      out.trajectory <- simmer::trajectory() %>%
-      simmer::seize("usa.counter",1) %>%                                                           # add USA counter
-      simmer::release("usa.counter",1) 
-    } else {
-      w <- which(pickup.areas[,1]==timeout.action)
-      # The following line could result in an infinite loop
-      # Add check that there is no circular logic in migrant flow.
-      out.trajectory <- ca_migrant_simmer::trajectory(w,follow.on.trajectory)
-    } 
-    area.trajectories[[pickup.areas$pickup.area[area.index]]] <- simmer::trajectory() %>%
-      simmer::set_attribute(keys = "area.journey.time", values=journey.time) %>%
+    trj.list[[area.index]] <- simmer::trajectory() %>%
+      simmer::set_attribute(
+        keys = "area.journey.time",
+        values=pickup.areas$transit.time[area.index]
+      ) %>%
       simmer::renege_in(
         t = pickup.areas$migrant.timeout[area.index],                                      # add branches here? depart = count
-        out = out.trajectory
+        out = (function(pickup.areas, timeout.action){
+          if(timeout.action=="depart"){
+            trj <- simmer::trajectory() %>%
+              simmer::seize("usa.counter",1) %>%                                                           # add USA counter
+              simmer::release("usa.counter",1) %>%
+              leave(1)
+          } else {
+            w <- which(pickup.areas[,1]==timeout.action)
+            trj <- simmer::trajectory() %>%
+              simmer::set_attribute(
+                keys = "pickup.area",
+                values = w
+              ) %>%
+              simmer::rollback(4)
+          }
+        })(pickup.areas,pickup.areas$timeout.action[area.index])
       ) %>%
       simmer::seize(paste("boat.area",area.index,sep="_")) %>%
       simmer::renege_abort() %>% 
@@ -426,7 +473,7 @@ area_trajectory_list <- function(
           simmer::seize("repat_afloat",1) %>%                                                     # repat afloat counter
           simmer::release("repat_afloat", 1)   ## 
       ) %>%
-      simmer::seize("afloat.counter") %>%                                                         # afloat.counter
+      simmer::seize("afloat.counter") %>%
       simmer::set_global(
         keys = paste("boat.count",area.index,sep="_"),
         values = 1,
@@ -434,10 +481,18 @@ area_trajectory_list <- function(
       ) %>% 
       simmer::branch(
         option = function(){
-          boat.count <- simmer::get_global(env,paste("boat.count",area.index,sep="_"))
-          boat.type <- simmer::get_global(env,paste("boat.type",area.index,sep="_"))
+          pickup.area <- simmer::get_attribute(env,"pickup.area")
+          boat.count <- simmer::get_global(env,paste("boat.count",pickup.area,sep="_"))
+          boat.type <- simmer::get_global(env,paste("boat.type",pickup.area,sep="_"))
           n <- ship.attributes$sat.capacity[boat.type]
           m <- ship.attributes$supersat.capacity[boat.type]
+          if(length(boat.count==n)==0){
+            cat(area.index,"\n")
+            cat(boat.count,"\n")
+            cat(boat.type,"\n")
+            cat(n,"\n")
+            cat(m,"\n")
+          }
           if(boat.count == 1){
             return(1)
           } else if(boat.count==n){
@@ -458,7 +513,8 @@ area_trajectory_list <- function(
             simmer::send(
               signals = paste("boat.depart",area.index,sep="_"),
               delay = function(){
-                boat.type <- simmer::get_global(env,paste("boat.type",area.index,sep="_"))
+                pickup.area <- simmer::get_attribute(env,"pickup.area")
+                boat.type <- simmer::get_global(env,paste("boat.type",pickup.area,sep="_"))
                 t.1 <- ship.attributes$occupied.time[boat.type]
                 jt <- simmer::get_attribute(env,"area.journey.time")
                 return(max(0,t.1 - jt))
@@ -472,7 +528,8 @@ area_trajectory_list <- function(
             simmer::send(
               signals = paste("boat.depart",area.index,sep="_"),
               delay = function(){
-                boat.type <- simmer::get_global(env,paste("boat.type",area.index,sep="_"))
+                pickup.area <- simmer::get_attribute(env,"pickup.area")
+                boat.type <- simmer::get_global(env,paste("boat.type",pickup.area,sep="_"))
                 t.n <- ship.attributes$sat.time[boat.type]
                 jt <- simmer::get_attribute(env,"area.journey.time")
                 return(max(t.n - jt,0))
@@ -492,24 +549,39 @@ area_trajectory_list <- function(
       simmer::trap(paste("boat.departed",area.index,sep="_")) %>%
       simmer::wait() %>%
       simmer::release(paste("boat.area",area.index,sep="_")) %>%
-      simmer::timeout(journey.time) %>%
-      simmer::trap(
-        signals = function(){
-          return(
-            sprintf("debark_%1.2f",simmer::now(env))
-          )
-        }
-      )%>%
-      simmer::wait() %>%
-      simmer::release("afloat.counter") %>%
-      follow.on
+      simmer::timeout(pickup.areas$transit.time[area.index])
   }
-  return(area.trajectories)
+  o <- simmer::branch(
+    .trj,
+    option = function(){
+      pa <- simmer::get_attribute(
+        env,
+        "pickup.area"
+      )
+      return(pa)
+    },
+    continue = TRUE,
+    trj.list
+  ) %>%
+    simmer::trap(
+      signals = function(){
+        return(
+          sprintf("debark_%1.2f",simmer::now(env))
+        )
+      }
+    )%>%
+    simmer::wait() %>%
+    simmer::release("afloat.counter")
+  return(o)
 }
+
+
+
 
 boat_trajectory_list <- function(
   pickup.areas,
-  ship.attributes
+  ship.attributes,
+  ship.allocation
 ){
   boat.trajectories <- list()
   count <- 0
@@ -562,13 +634,13 @@ boat_trajectory_list <- function(
           ) %>%
           simmer::timeout(epsilon) %>%
           simmer::send(paste("boat.departed",area.index,sep="_")) %>%
-          simmer::timeout(small.epsilon) %>%
+          simmer::timeout(small.epsilon()) %>%
           simmer::untrap(paste("boat.depart",area.index.sep="_")) %>% 
           simmer::set_global(
             paste("boat.count",area.index,sep="_"),
             0
           ) %>%
-          simmer::timeout(small.epsilon) %>% 
+          simmer::timeout(small.epsilon()) %>% 
           simmer::release(paste("area",area.index,sep="_")) %>%
           simmer::timeout(journey.time) %>%
           simmer::set_attribute(
@@ -618,11 +690,11 @@ ferry_trajectory <- function(proc.params){
   ferry.trajectory <- simmer::trajectory() %>%
     simmer::set_attribute(keys = "start.time",values = function() return(simmer::now(env))) %>%
     simmer::set_capacity("transit-to-leeward",ferry.capacity,mod="+") %>%
-    simmer::timeout(small.epsilon) %>%
+    simmer::timeout(small.epsilon()) %>%
     simmer::set_capacity("transit-to-leeward",-ferry.capacity,mod="+") %>%
     simmer::timeout(ferry.transit.time) %>%
     simmer::set_capacity("transit-to-windward",ferry.capacity,mod="+") %>%
-    simmer::timeout(small.epsilon) %>%
+    simmer::timeout(small.epsilon()) %>%
     simmer::set_capacity("transit-to-windward",-ferry.capacity,mod="+") %>%
     simmer::timeout(ferry.transit.time) %>% 
     simmer::branch(
@@ -650,5 +722,70 @@ ferry_trajectory <- function(proc.params){
     ) %>%
     simmer::rollback(9)
   return(ferry.trajectory)
+}
+
+check_area_trajectory_list <- function(atl,pickup.areas){
+  if(!all(names(atl) %in% as.character(pickup.areas[,1]))){
+    stop("Pickup Area Trajectory Name Mismatch!")
+  }
+  s <- match(
+    as.character(pickup.areas[,1]),
+    names(atl)
+  )
+  return(atl[s])
+}
+
+set_pickup_area <- function(
+  .trj,
+  migrant.sources,
+  pickup.areas
+){
+  o <- simmer::set_attribute(
+    .trj,
+    keys = "pickup.area",
+    values = function(){
+      source <- simmer::get_attribute(env,"source")
+      source.str <- migrant.sources$Source[source]
+      p <- pickup.areas[,source.str]
+      q <- prob_generator_int(p)
+      return(q)
+    }
+  )
+  return(o)
+}
+
+source_trajectory <- function(
+  .trj,
+  migrant.sources,
+  source.rates,
+  family.status.probs,
+  health.probs,
+  nationality.probs,
+  protected.probs,
+  security.risk.probs,
+  pickup.areas,
+  ...
+){
+  source.cols <- which(names(pickup.areas) %in% as.character(migrant.sources$Source))
+  mig.sources <- names(pickup.areas)[source.cols]
+  if(!all(as.character(migrant.sources$Source) %in% as.character(mig.sources))){
+    warning("Pickup data does not contain columns for all sources.")
+  }
+  trj <- set_all_attributes(
+    .trj,
+    migrant.sources,
+    source.rates,
+    family.status.probs,
+    health.probs,
+    nationality.probs,
+    protected.probs,
+    security.risk.probs,
+    ...
+  ) %>%
+    set_pickup_area(
+      migrant.sources,
+      pickup.areas
+    )
+  return(trj)
 }
 

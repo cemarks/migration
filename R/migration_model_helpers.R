@@ -48,7 +48,7 @@ prob_generator <- function(input.table,mig.source){
     )
   )
 }
-security_risk_prob_generator <- function(family.status.value,mig.source){
+security_risk_prob_generator <- function(family.status.value,mig.source,security.risk.probs){
   p <- security.risk.probs[family.status.value,mig.source]
   r <- stats::runif(1)
   if(r <= p){
@@ -59,7 +59,13 @@ security_risk_prob_generator <- function(family.status.value,mig.source){
 }
 
 
-src_generator <- function(migrant.sources,source.rates,nat=NULL,t=0){
+src_generator <- function(
+  migrant.sources,
+  source.rates,
+  nationality.probs,
+  nat=NULL,
+  t=0
+){
     if(is.null(nat)){
       s <- source.rates[order(source.rates$time),]
       w <- NULL
@@ -68,8 +74,18 @@ src_generator <- function(migrant.sources,source.rates,nat=NULL,t=0){
       }
       p <- s$rate[w]/sum(s$rate[w])
       src.int <- prob_generator_int(p)
-    } else {
+    } else if(is.character(nat)){
       w.nat <- which(nationality.probs$nationality==nat)
+      s <- source.rates[order(source.rates$time),]
+      w <- NULL
+      for(ss in migrant.sources[,1]){
+        w <- c(w,max(which(s$source==ss & s$time <= t)))
+      }
+      p <- s$rate[w]/sum(s$rate[w])
+      p.nat <- (nationality.probs[w.nat,migrant.sources[,1]]*p)/sum(nationality.probs[w.nat,migrant.sources[,1]]*p)
+      src.int <- prob_generator_int(as.numeric(p.nat))
+    } else {
+      w.nat <- nat
       s <- source.rates[order(source.rates$time),]
       w <- NULL
       for(ss in migrant.sources[,1]){
